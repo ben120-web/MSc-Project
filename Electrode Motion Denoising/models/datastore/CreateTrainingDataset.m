@@ -17,11 +17,10 @@ maxNosieSections = 10; % Can vary this.
 SNR = [0 6 12 18 24];
 numberOfGeneratedNoisySignals = 10; % Can vary this.
 
-
 % Generate noisy database
 generatingNoisyEcgDatabase(noiseSignalPath, ...
     ecgSignalPath, 500, AverageEcgLength, maxNosieSections, SNR, ...
     numberOfGeneratedNoisySignals);
 
 
-
+end
