@@ -1,5 +1,5 @@
 function noiseOutputSignals = noiseSignalModeling(noiseInputSignal, fs, ...
-    nOutputSignals, isNoiseSignalPowerlineNoise)
+    nOutputSignals)
 % noiseSignalModeling - generates multiple copies of noise signal based on
 % the model parameters estimated using the input noise signal as a
 % reference. The out noisy signals are also scaled according to the SNR
@@ -74,96 +74,32 @@ else
     nOutputSignals = DEFAULT_SIGNALS_TO_GENERATE;
 
 end
- 
-% Validate isNoiseSignalPowerlineNoise.
-if nargin > 3 && ~isempty(isNoiseSignalPowerlineNoise)
-
-    validateattributes(isNoiseSignalPowerlineNoise, {'logical'}, ...
-        {'scalar'}, mfilename, 'IsNoiseSignalPowerlineNoise', 4);
-
-else
-
-    isNoiseSignalPowerlineNoise = DEFAULT_IS_NOISE_SIGNAL_POWERLINE_NOISE;
-
-end
 
 % Get the length of the signal and pre-allocate memory.
 lengthOfNoiseSignal = numel(noiseInputSignal);
 noiseOutputSignals = cell(nOutputSignals + 1, 1);
 
-if ~isNoiseSignalPowerlineNoise
+% Use the noiseInputSignal to model different cases of noisy signals with
+% similar PSD.
+modelOrder = min([MAX_MODEL_ORDER, lengthOfNoiseSignal / SIGNAL_LENGTH_DIVIDER]);
 
-    % Use the noiseInputSignal to model different cases of noisy signals with
-    % similar PSD.
-    modelOrder = min([MAX_MODEL_ORDER, lengthOfNoiseSignal / SIGNAL_LENGTH_DIVIDER]);
+noiseSignalMean = mean(noiseInputSignal);
+unbiasedInputSignal = noiseInputSignal - noiseSignalMean;
 
-    noiseSignalMean = mean(noiseInputSignal);
-    unbiasedInputSignal = noiseInputSignal - noiseSignalMean;
+% Estimate the model coefficients.
+[modelCoefs, modelVariance] = arburg(unbiasedInputSignal, modelOrder);
 
-    % Estimate the model coefficients.
-    [modelCoefs, modelVariance] = arburg(unbiasedInputSignal, modelOrder);
+% Set the random number generator and generate the input signals for the
+% model.
+rng(45, 'twister');
+inputSignalForModel = randn(lengthOfNoiseSignal, nOutputSignals);
 
-    % Set the random number generator and generate the input signals for the
-    % model.
-    rng(45, 'twister');
-    inputSignalForModel = randn(lengthOfNoiseSignal, nOutputSignals);
+% Get the initial state for the model.
+zi = filtic(1, modelCoefs, flipud(unbiasedInputSignal));
 
-    % Get the initial state for the model.
-    zi = filtic(1, modelCoefs, flipud(unbiasedInputSignal));
-
-    % Estimate the signals using the model parameters.
-    estimatedSignals = noiseSignalMean + (filter(1, modelCoefs, ...
-        inputSignalForModel, zi)).*sqrt(modelVariance);
-
-else
-
-    % Check if the length of the signal is even or odd and calcualte the
-    % FFT.
-    if ~rem(lengthOfNoiseSignal, 2)
-
-        noiseInputSignalFFT = fft(noiseInputSignal);
-        halflength = lengthOfNoiseSignal / 2;
-
-    else
-
-        noiseInputSignalFFT = fft([noiseInputSignal; 0]);
-        halflength = (lengthOfNoiseSignal + 1) / 2;
-
-    end
-
-    % Get the length of the FFT and make the frequency axis vector.
-    nFFT = numel(noiseInputSignalFFT);
-    frequencyAxis = fs * (0 : halflength) / nFFT;
-
-    % Find the max of FFT and use it find the fundemental frequency of the
-    % noise signal.
-    [~, maxIndex] = max(abs(noiseInputSignalFFT(1 : halflength + 1)));
-    fundementalFrequency = frequencyAxis(maxIndex);
-
-    % Estimate the samples per cycle of the signal and use it to calculate
-    % the shift for the estimated noisy signals.
-    samplePerCycle = round(fs / fundementalFrequency);
-
-    % Initially generating more values here as some will be removed.
-    numberOfSamplesToShift = 1 : 2 * nOutputSignals;
-    indexToDeletKeep = rem(numberOfSamplesToShift, samplePerCycle) ~= 0;
-    numberOfSamplesToShift = numberOfSamplesToShift(indexToDeletKeep);
-    
-    if numel(numberOfSamplesToShift) > nOutputSignals
-
-        numberOfSamplesToShift = numberOfSamplesToShift(1 : nOutputSignals);
-
-    end
-
-    % Shift the original FFT.
-    shiftedFFT = exp(-1i * 2 * pi / nFFT * (0 : nFFT - 1)' * ...
-        numberOfSamplesToShift) .* noiseInputSignalFFT;
-
-    % Use inverse FFT to get the estiamted signals.
-    estimatedSignals = ifft(shiftedFFT, lengthOfNoiseSignal, 'symmetric');
-    estimatedSignals = estimatedSignals(1 : lengthOfNoiseSignal, :);
-
-end
+% Estimate the signals using the model parameters.
+estimatedSignals = noiseSignalMean + (filter(1, modelCoefs, ...
+    inputSignalForModel, zi)) .* sqrt(modelVariance);
 
 % Add the initial input noise signal to the output matirx.
 noiseOutputSignals{1, 1} = noiseInputSignal;
@@ -173,9 +109,6 @@ for iOutputSignal = 2 : nOutputSignals + 1
     noiseOutputSignals{iOutputSignal, 1} = estimatedSignals(:, iOutputSignal - 1);
 
 end
-
-% % Reset the random number generator.
-% rng('default');
 
 end
 %------------- END OF CODE -------------
