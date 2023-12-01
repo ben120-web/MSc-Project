@@ -9,8 +9,8 @@ MIN_ANGLES_OF_EXTREMA = [-90 -35 -20 -5 80];
 MAX_ANGLES_OF_EXTRAMA = [-50 5 20 35 120];
 MIN_Z_POSITION_OF_EXTRAMA = [0 -10 5 -15 0];
 MAX_Z_POSITION_OF_EXTRAMA = [3 30 55 0 5];
-MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
-MAX_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
+MIN_GAUSSIAN_WIDTH = [0.1 0.05 0.05 0.05 0.2];
+MAX_GAUSSIAN_WIDTH = [0.4 0.15 0.15 0.15 0.6];
 
 % Create a structure with all features to change.
 featureStruct = struct();
@@ -50,12 +50,34 @@ for iHeartRate = 1 : numOfHeartRates
         % Iterate through specific feature
         for iMorphology = 1 : numOfMorphologies
 
-            5 
+            % Define Morphology to change
+            iterationData = data(iMorphology, :);
+
+            % Define morp type
+            morphType = FEATURES(iMorphology);
+
+            % Logic to determine step size based on feature
+            switch feature
+                case "extremaAngles"
+                    stepSize = 1; % Degrees
+                case "zPosition"
+                    stepSize = 0.1;
+                case "width"
+                    stepSize = 0.05;
+            end
+
+            % Determine numner of iterations
+            nIterations = iterationData(:, 2) - iterationData(:, 1);
+
+            % Determine parameters
+            anglesOfExtrema = []
+            zPositionExtrema = 
+            GaussianWidth = 
 
             % Call ECGSYN MATLAB function to generate signal.
             [ecgSignal, peakLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
-                1, 0.5, samplingFrequency, [-70 -15 0 15 100], [1.2 -5 30 -7.5 0.75], ...
-                    [0.25 0.1 0.1 0.1 0.4]);
+                1, 0.5, samplingFrequency, anglesOfExtrema, zPositionExtrema, ...
+                    GaussianWidth);
 
             % Save the outputs with appropriate file names.
             fileName = fullfile(string(meanHr) + "BPM" + "cleanSignal");
