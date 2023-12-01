@@ -12,30 +12,53 @@ MAX_Z_POSITION_OF_EXTRAMA = [3 30 55 0 5];
 MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 MAX_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 
+% Create a structure with all features to change.
+featureStruct = struct();
+featureStruct.extremaAngles(:, 1) = MIN_ANGLES_OF_EXTREMA';
+featureStruct.extremaAngles(:, 2) = MAX_ANGLES_OF_EXTRAMA';
+featureStruct.zPosition(:, 1) = MIN_Z_POSITION_OF_EXTRAMA';
+featureStruct.zPosition(:, 2) = MAX_Z_POSITION_OF_EXTRAMA';
+featureStruct.width(:, 1) = MIN_GAUSSIAN_WIDTH';
+featureStruct.width(:, 2) = MAX_GAUSSIAN_WIDTH';
+
+
 % Loop through each parameter setting.
 for iHeartRate = 1 : numOfHeartRates
 
     meanHr = HR_TO_GENERATE(iHeartRate);
 
     % State number of features we want to iterate through.
-    nFeatures = numel(MIN_GAUSSIAN_WIDTH);
+    nFeatures = numel(fieldnames(featureStruct));
 
     % Few more loops to cover each shape.
     for iFeature = 1 : nFeatures
 
+        featureNames = fieldnames(featureStruct);
+
         % Specify feature
-        feature = FEATURES(iFeature);
+        feature = string(featureNames(iFeature));
 
-        % Grab minumum
-        minValue = 
+        % Grab Data
+        data = featureStruct.(feature);
+
+        minValues = data(:, 1);
+        maxValues = data(:, 2);
+
+        % Get number of morhologies to iterate through
+        numOfMorphologies = height(data);
+
         % Iterate through specific feature
-        for iIteration = 1 : nIterations
+        for iMorphology = 1 : numOfMorphologies
 
-        % Call ECGSYN MATLAB function to generate signal.
-        [ecgSignal, peakLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
-             1, 0.5, samplingFrequency, [-70 -15 0 15 100], [1.2 -5 30 -7.5 0.75], ...
-                [0.25 0.1 0.1 0.1 0.4]);
+            
 
-    % Save the outputs with appropriate file names.
-    fileName = fullfile(string(meanHr) + "BPM" + "cleanSignal");
+            % Call ECGSYN MATLAB function to generate signal.
+            [ecgSignal, peakLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
+                1, 0.5, samplingFrequency, [-70 -15 0 15 100], [1.2 -5 30 -7.5 0.75], ...
+                    [0.25 0.1 0.1 0.1 0.4]);
+
+            % Save the outputs with appropriate file names.
+            fileName = fullfile(string(meanHr) + "BPM" + "cleanSignal");
+        end
+    end
 end
