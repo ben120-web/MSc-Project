@@ -8,9 +8,12 @@ function CreateTrainingDataset()
 emNoise = ...
     extractAndPreProcessNoiseSignal(); % These get saved in datastore/noiseSignal
 
+% Call function to syntetically generate Clean ECG signals.
+createSyntheticCleanEcgSignals()
+
 % Define inputs.
 noiseSignalPath = fullfile(erase(mfilename('fullpath'), mfilename), "noiseSignal");
-ecgSignalPath = ; % Create a database of clean ECG // Ensure 500Hz. Keep in .mat format.
+ecgSignalPath = fullfile(erase(mfilename('fullpath'), mfilename), "cleanSignals"); % Create a database of clean ECG // Ensure 500Hz. Keep in .mat format.
 
 AverageEcgLength = ; % Keep as constants.
 maxNosieSections = 10; % Can vary this.
