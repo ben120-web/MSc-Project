@@ -33,6 +33,14 @@ numOfCleanSignals = 10000;
 % Number of heartrates
 numOfHeartRates = numel(HR_TO_GENERATE);
 
+% Define output folder
+outputFolder = erase(mfilename('fullpath'), mfilename);
+outputFolder = fullfile(outputFolder, ...
+    'cleanSignals');
+
+% Make directory
+if ~isfolder(outputFolder) mkdir(outputFolder); end
+
 % Loop through each parameter setting.
 for iHeartRate = 1 : numOfHeartRates
 
@@ -41,33 +49,20 @@ for iHeartRate = 1 : numOfHeartRates
     % Loop through each signal to generate
     for iSignal = 1 : numOfCleanSignals
 
-        % Extract parameter data.
-        parameterData = vertcat([anglesOfExtrema(iSignal, :), zPositionOfExtrema(iSignal, :)...
-            , gaussianWidth(iSignal, :)]);
-
+        % Extract data.
         angleData = anglesOfExtrema(iSignal, :);
         zData = zPositionOfExtrema(iSignal, :);
-        
-
-    % Get number of morhologies to iterate through
-    numOfMorphologies = height(data);
-
-    % Iterate through specific feature
-    for iMorphology = 1 : numOfMorphologies
-
-        % Define Morphology to change
-        iterationData = data(iMorphology, :);
-
-        % Determine numner of iterations
-        nIterations = iterationData(:, 2) - iterationData(:, 1);
+        widthData = gaussianWidth(iSignal, :);
 
         % Call ECGSYN MATLAB function to generate signal.
-        [ecgSignal, peakLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
-            1, 0.5, samplingFrequency, anglesOfExtrema, zPositionExtrema, ...
-            GaussianWidth);
+        [cleanEcgSignal, ~] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
+            1, 0.5, samplingFrequency, angleData, zData, ...
+            widthData);
 
         % Save the outputs with appropriate file names.
-        fileName = fullfile(string(meanHr) + "BPM" + "cleanSignal");
+        fileName = fullfile(string(meanHr) + "BPM" + "_cleanSignal");
+        save(fileName, "cleanEcgSignal");
+
     end
 end
 end
