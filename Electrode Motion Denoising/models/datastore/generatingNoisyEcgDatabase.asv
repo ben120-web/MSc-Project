@@ -108,7 +108,7 @@ for iEcgFile = 1 : nEcgFiles
         lengthOfThisEcgSignal = numel(ecgSignal);
 
         % Detect the r-peak locations.
-        [~, qrsLocations] = findpeaks(ecgSignal);
+        [~, qrsLocations] = findpeaks(ecgSignal, 'MinPeakHeight', );
 
         % Convert the qrs search window to samples. This window will be used to
         % calculate the qrs amplitude.
