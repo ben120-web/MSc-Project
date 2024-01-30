@@ -108,7 +108,7 @@ for iEcgFile = 1 : nEcgFiles
         lengthOfThisEcgSignal = numel(ecgSignal);
 
         % Detect the r-peak locations.
-        [~, qrsLocations] = findpeaks(ecgSignal);
+        [~, qrsLocations] = peakDetector(ecgSignal);
 
         % Convert the qrs search window to samples. This window will be used to
         % calculate the qrs amplitude.
@@ -196,6 +196,21 @@ end
 end
 
 %% Subfunction
+function qrsLocations = peakDetector(signal)
+
+wt = modwt(signal,5);
+wtrec = zeros(size(wt));
+wtrec(4:5,:) = wt(4:5,:);
+y = imodwt(wtrec,'sym4');
+
+y = abs(y).^2;
+
+[~, qrsLocations] = findpeaks(y, 1 : numel(signal),'MinPeakHeight', 0.1,...
+    'MinPeakDistance',0.150);
+
+end
+
+
 function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
 % Computes the Root-Mean-Squared amplitude of a signal by measuring the RMS
 % value for each second and then discarding the top and bottom 5% of
