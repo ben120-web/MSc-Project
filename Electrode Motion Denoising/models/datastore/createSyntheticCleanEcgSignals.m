@@ -4,22 +4,12 @@ function createSyntheticCleanEcgSignals()
 samplingFrequency = 500; % Always work at 500Hz.
 
 HR_TO_GENERATE = [50, 60, 70, 80, 90, 100];
-FEATURES = ["P", "Q", "R", "S", "T"];
 MIN_ANGLES_OF_EXTREMA = [-90 -35 -20 -5 80];
 MAX_ANGLES_OF_EXTRAMA = [-50 5 20 35 120];
 MIN_Z_POSITION_OF_EXTRAMA = [0 -10 5 -15 0];
 MAX_Z_POSITION_OF_EXTRAMA = [3 30 55 0 5];
 MIN_GAUSSIAN_WIDTH = [0.1 0.05 0.05 0.05 0.2];
 MAX_GAUSSIAN_WIDTH = [0.4 0.15 0.15 0.15 0.6];
-
-% Create a structure with all features to change.
-featureStruct = struct();
-featureStruct.extremaAngles(:, 1) = MIN_ANGLES_OF_EXTREMA';
-featureStruct.extremaAngles(:, 2) = MAX_ANGLES_OF_EXTRAMA';
-featureStruct.zPosition(:, 1) = MIN_Z_POSITION_OF_EXTRAMA';
-featureStruct.zPosition(:, 2) = MAX_Z_POSITION_OF_EXTRAMA';
-featureStruct.width(:, 1) = MIN_GAUSSIAN_WIDTH';
-featureStruct.width(:, 2) = MAX_GAUSSIAN_WIDTH';
 
 % Number of different sigals to generate.
 numOfCleanSignals = 10000;
@@ -55,15 +45,25 @@ for iHeartRate = 1 : numOfHeartRates
         widthData = gaussianWidth(iSignal, :);
 
         % Call ECGSYN MATLAB function to generate signal.
-        [cleanEcgSignal, ~] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
-            1, 0.5, samplingFrequency, angleData, zData, ...
-            widthData);
+        try
+            [cleanEcgSignal, ~] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
+                1, 0.5, samplingFrequency, angleData, zData, ...
+                widthData);
+
+        catch
+            continue
+        end
 
         % Save the outputs with appropriate file names.
-        fileName = fullfile(string(meanHr) + "BPM" + "_cleanSignal");
-        save(fileName, "cleanEcgSignal")
+        fileName = fullfile(string(meanHr) + "BPM_" + string(iSignal) + "_cleanSignal");
+        save(fullfile(outputFolder, fileName), "cleanEcgSignal")
 
     end
+
+    % Save parameters
+    save(fullfile(outputFolder, "AngleData"), 'anglesOfExtrema');
+    save(fullfile(outputFolder, "zData"), 'zPositionOfExtrema');
+    save(fullfile(outputFolder, "widthData"), 'gaussianWidth');
 end
 end
 
