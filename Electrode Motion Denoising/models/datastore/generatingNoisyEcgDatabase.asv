@@ -108,7 +108,7 @@ for iEcgFile = 1 : nEcgFiles
         lengthOfThisEcgSignal = numel(ecgSignal);
 
         % Detect the r-peak locations.
-        [~, qrsLocations] = peakDetector(ecgSignal);
+        qrsLocations = TempData.(tempDataFieldNames{2});
 
         % Convert the qrs search window to samples. This window will be used to
         % calculate the qrs amplitude.
@@ -135,7 +135,7 @@ for iEcgFile = 1 : nEcgFiles
 
         end
 
-        % Convert th peak to peak qrs amplitude to power. This is the correct
+        % Convert the peak to peak qrs amplitude to power. This is the correct
         % transformation for a sine wave. In this instance, it approximates close
         % enough for measurement. See the PDF of ecg SNR report for derivation.
         qrsPeakToPeakPower = (mean(qrsPeakToPeak, 'omitnan') ^ 2) / 8;
@@ -205,13 +205,10 @@ y = imodwt(wtrec,'sym4');
 
 y = abs(y).^2;
 
-[qrspeaks,locs] = findpeaks(y, 1 : numel(signal),'MinPeakHeight', 0.1,...
+[~, qrsLocations] = findpeaks(y, 1 : numel(signal),'MinPeakHeight', 0.1,...
     'MinPeakDistance',0.150);
-% Finds the peak locations in the ecg signal.
 
-
-
-
+end
 
 
 function [noiseAmp] = computeRmsNoiseAmp(noiseSection)

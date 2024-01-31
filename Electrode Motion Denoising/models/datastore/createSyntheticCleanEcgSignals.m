@@ -31,6 +31,9 @@ outputFolder = fullfile(outputFolder, ...
 % Make directory
 if ~isfolder(outputFolder) mkdir(outputFolder); end
 
+% Initialise Structure
+signalData = struct();
+
 % Loop through each parameter setting.
 for iHeartRate = 1 : numOfHeartRates
 
@@ -46,9 +49,15 @@ for iHeartRate = 1 : numOfHeartRates
 
         % Call ECGSYN MATLAB function to generate signal.
         try
-            [cleanEcgSignal, ~] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
+            [cleanEcgSignal, qrsLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
                 1, 0.5, samplingFrequency, angleData, zData, ...
                 widthData);
+
+            peakLocations = find(qrsLocations == 3);
+
+            % Create a structure containing data
+            signalData.ecgSignal = cleanEcgSignal;
+            signalData.qrsPeaks = peakLocations;
 
         catch
             continue
@@ -56,7 +65,7 @@ for iHeartRate = 1 : numOfHeartRates
 
         % Save the outputs with appropriate file names.
         fileName = fullfile(string(meanHr) + "BPM_" + string(iSignal) + "_cleanSignal");
-        save(fullfile(outputFolder, fileName), "cleanEcgSignal")
+        save(fullfile(outputFolder, fileName), "signalData")
 
     end
 

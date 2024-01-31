@@ -108,7 +108,7 @@ for iEcgFile = 1 : nEcgFiles
         lengthOfThisEcgSignal = numel(ecgSignal);
 
         % Detect the r-peak locations.
-        [~, qrsLocations] = peakDetector(ecgSignal);
+        qrsLocations = TempData.(tempDataFieldNames{2});
 
         % Convert the qrs search window to samples. This window will be used to
         % calculate the qrs amplitude.
@@ -135,44 +135,40 @@ for iEcgFile = 1 : nEcgFiles
 
         end
 
-        % Convert th peak to peak qrs amplitude to power. This is the correct
+        % Convert the peak to peak qrs amplitude to power. This is the correct
         % transformation for a sine wave. In this instance, it approximates close
         % enough for measurement. See the PDF of ecg SNR report for derivation.
         qrsPeakToPeakPower = (mean(qrsPeakToPeak, 'omitnan') ^ 2) / 8;
 
         % Now using the qrs peak to peak power all the noises in each
         % section will be scaled for every SNR level.
-        for kSNR = 1 :nSNR
+        for kSNR = 1 : nSNR
 
-            for lNoise = 1 : nNoises
+            thisNoise = initialGenerateNoise.(noiseDataFieldNames);
 
-                thisNoise = initialGenerateNoise.(noiseDataFieldNames{lNoise, 1});
+            for mSection = 1 : maxNosieSections
 
-                for mSection = 1 : maxNosieSections
+                thisNoiseSection = thisNoise{mSection, 1};
 
-                    thisNoiseSection = thisNoise{mSection, 1};
+                for iGenSignal = 1 : numberOfGeneratedNoisySignals + 1
 
-                    for iGenSignal = 1 : numberOfGeneratedNoisySignals + 1
+                    thisNoiseSignal = thisNoiseSection{iGenSignal, 1};
 
-                        thisNoiseSignal = thisNoiseSection{iGenSignal, 1};
+                    thisNoiseSignal = thisNoiseSignal(1 : lengthOfThisEcgSignal);
 
-                        thisNoiseSignal = thisNoiseSignal(1 : lengthOfThisEcgSignal);
+                    % Calculate power of noise signals.
+                    thisNoiseSignalPower = ...
+                        computeRmsNoiseAmp(thisNoiseSignal) ^ 2;
 
-                        % Calculate power of noise signals.
-                        thisNoiseSignalPower = ...
-                            computeRmsNoiseAmp(thisNoiseSignal) ^ 2;
+                    % Calculate the scale factor which is required to
+                    % achieve the desired SNR level with each noisy
+                    % signal.
+                    scaleFactor = sqrt(qrsPeakToPeakPower / ...
+                        (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
 
-                        % Calculate the scale factor which is required to
-                        % achieve the desired SNR level with each noisy
-                        % signal.
-                        scaleFactor = sqrt(qrsPeakToPeakPower / ...
-                            (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
-
-                        DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
-                            (noiseNames{lNoise, 1}){iGenSignal, 1} = ...
-                            thisNoiseSignal .* scaleFactor;
-
-                    end
+                    DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
+                        (noiseNames){iGenSignal, 1} = ...
+                        thisNoiseSignal .* scaleFactor;
 
                 end
 
@@ -196,21 +192,6 @@ end
 end
 
 %% Subfunction
-function qrsLocations = peakDetector(signal)
-
-wt = modwt(signal,5);
-wtrec = zeros(size(wt));
-wtrec(4:5,:) = wt(4:5,:);
-y = imodwt(wtrec,'sym4');
-
-y = abs(y).^2;
-
-[~, qrsLocations] = findpeaks(y, 1 : numel(signal),'MinPeakHeight', 0.1,...
-    'MinPeakDistance',0.150);
-
-end
-
-
 function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
 % Computes the Root-Mean-Squared amplitude of a signal by measuring the RMS
 % value for each second and then discarding the top and bottom 5% of
