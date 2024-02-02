@@ -4,12 +4,8 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
 %------------- BEGIN CODE --------------
 %% Set constants
-DEFAULT_SNR = [0, 6, 12, 18, 24];
 DEFAULT_Fs = 500;
 QRS_SEARCH_WINDOW = 0.05; % [s]
-DEFAULT_AVERAGE_LENGTH = 30; % [s].
-DEFAULT_MAX_NOISE_SECTION = 2;
-DEFAULT_NUMBER_OF_GENERATED_NOISY_SIGNALS = 2;
 
 % Get the information from the noise signals folder.
 noiseSignalDirInfo = dir(fullfile(noiseSignalPath, '*mat'));

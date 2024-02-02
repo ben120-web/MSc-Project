@@ -18,7 +18,7 @@ numOfCleanSignals = 10000;
 % parameter values.
 [anglesOfExtrema, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_ANGLES_OF_EXTREMA, MAX_ANGLES_OF_EXTRAMA);
 [zPositionOfExtrema, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_Z_POSITION_OF_EXTRAMA, MAX_Z_POSITION_OF_EXTRAMA);
-[gaussianWidth, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_GAUSSIAN_WIDTH, MAX_GAUSSIAN_WIDTH);
+[gaussianWidth, ~] = latinHyperCuDefbeSampling(numOfCleanSignals, MIN_GAUSSIAN_WIDTH, MAX_GAUSSIAN_WIDTH);
 
 % Number of heartrates
 numOfHeartRates = numel(HR_TO_GENERATE);
@@ -52,7 +52,8 @@ for iHeartRate = 1 : numOfHeartRates
             [cleanEcgSignal, qrsLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
                 1, 0.5, samplingFrequency, angleData, zData, ...
                 widthData);
-
+            
+            % Save all peak locations
             peakLocations = find(qrsLocations == 3);
 
             % Create a structure containing data
