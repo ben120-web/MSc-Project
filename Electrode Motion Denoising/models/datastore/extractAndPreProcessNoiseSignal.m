@@ -12,28 +12,10 @@ function emNoise = ...
 % Inputs:
 %    None Required.
 %
-%    Optional:
-%    PowerLineOpts - A structure containing the following fields:
-%       * powerline - A substructure containing the following fields:
-%          * frequency - An integer scalar specifying the fundamental
-%             frequency of the powerline noise in Hz. (Default: 50)
-%          * freqMaxDeviation - A numeric scalar specifying the
-%             maximum deviation in powerline frequency in Hz. (Default: 0)
-%          * numberOfHarmonics - An integer scalar specifying the number of
-%             harmonics of the power line frequency are present. (Default: 1)
-%
 % Outputs:
-%    bwNoise - A numeric vector containing the baseline wander noise signal.
 %    emNoise - A numeric vector containing the electrode motion noise signal.
-%    maNoise - A numeric vector containing the EMG noise signal.
-%    powerlineNoise50 - A numeric vector containing the 50Hz powerline
-%       noise.
-%    powerlineNoise60 - A numeric vector containing the 60Hz powerline
-%       noise.
-%
-% Other m-files required: getRootDir.m.
-% Subfunctions: generatePowerlineNoise,
-%               getOpts.
+% Other m-files required: none.
+% Subfunctions: none.
 % MAT-files required: generic-features-noise-sources.mat.
 
 %------------- BEGIN CODE --------------

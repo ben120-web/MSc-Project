@@ -1,7 +1,21 @@
 function generatingNoisyEcgDatabase(noiseSignalPath, ...
     ecgSignalPath, ecgFs, AverageEcgLength, maxNosieSections, SNR, ...
     numberOfGeneratedNoisySignals)
-
+% generatingNoisyEcgDatabase - generates a database of clean ECG
+% signals with different feature morphologies. Saves these in a unique
+% directory.
+%
+% Syntax: createSyntheticCleanEcgSignals()
+%
+% Inputs:
+%    None Required.
+%
+% Outputs: none.
+%
+% Other m-files required: none.
+% Subfunctions: none.
+% MAT-files required: generic-features-noise-sources.mat.
+%
 %------------- BEGIN CODE --------------
 %% Set constants
 DEFAULT_Fs = 500;
