@@ -1,25 +1,30 @@
 function generatingNoisyEcgDatabase(noiseSignalPath, ...
-    ecgSignalPath, ecgFs, AverageEcgLength, maxNosieSections, SNR, ...
+    ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
     numberOfGeneratedNoisySignals)
-% generatingNoisyEcgDatabase - generates a database of clean ECG
-% signals with different feature morphologies. Saves these in a unique
-% directory.
+% generatingNoisyEcgDatabase - Models new noise sections, then corrupts the
+% clean ECG's with pre-defined SNR levels of electrode motion noise.
 %
-% Syntax: createSyntheticCleanEcgSignals()
+% Syntax: generatingNoisyEcgDatabase()
 %
 % Inputs:
-%    None Required.
+%    noiseSignalPath - Directory to real noise .mat file.
+%    ecgSignalPath - Directory to all clean ECG signals.
+%    ecgFs - Sampling frequency of ECG signals.
+%    maxNosieSections - Maximum number of noise segments per ECG file.
+%    SNR - Array containing the required signal to noise ratios.
+%    numberOfGeneratedNoisySignals - The number of noisy signals to
+%    generate from each clean ECG signal.
 %
 % Outputs: none.
 %
-% Other m-files required: none.
-% Subfunctions: none.
-% MAT-files required: generic-features-noise-sources.mat.
+% Other m-files required: noiseSignalModeling.m.
+% Subfunctions: computeRmsNoiseAmp, generateInitialTable.
+% MAT-files required: none.
 %
 %------------- BEGIN CODE --------------
 %% Set constants
-DEFAULT_Fs = 500;
 QRS_SEARCH_WINDOW = 0.05; % [s]
+ECG_LENGTH_SECONDS = 30;
 
 % Get the information from the noise signals folder.
 noiseSignalDirInfo = dir(fullfile(noiseSignalPath, '*mat'));
@@ -30,16 +35,17 @@ initialNoiseData = load(fullfile(noiseSignalPath, noiseSignalDirInfo.name));
 
 % Calculate the minimum and maximum length of ecg signals which will be
 % used for noise generation.
-acceptableEcgLength500 = [AverageEcgLength - 3, AverageEcgLength + 3];
-acceptableEcgLength500 = acceptableEcgLength500.* DEFAULT_Fs;
+acceptableEcgLength500 = ECG_LENGTH_SECONDS;
+acceptableEcgLength500 = acceptableEcgLength500 .* ecgFs;
 
-lengthOfNoiseSignal = floor(numel(initialNoiseData.emNoise) ./ initialNoiseData.SIGNAL_FS);
+lengthOfNoiseSignal = numel(initialNoiseData.emNoise);
 
+% Define the noise signal.
 noiseSignal = initialNoiseData.emNoise;
 
 % Calculate the maximum possible noise sections that are possible and
 % update the maximum noise section value if required.
-maxPossibleNoiseSections = floor(lengthOfNoiseSignal / acceptableEcgLength500(2));
+maxPossibleNoiseSections = floor(lengthOfNoiseSignal / acceptableEcgLength500);
 
 if maxNosieSections > maxPossibleNoiseSections
 
@@ -48,21 +54,21 @@ if maxNosieSections > maxPossibleNoiseSections
 end
 
 % Get the starting index of each noise section.
-noiseSectionStart = 1 : acceptableEcgLength500(2) : lengthOfNoiseSignal;
+noiseSectionStart = 1 : acceptableEcgLength500 : lengthOfNoiseSignal;
 
 % Generate all the noise signals for each section of data. These signals
 % are not scaled with respect to SNR right now.
 for iNoiseSection = 1 : maxNosieSections
 
     noiseSectionEnd = noiseSectionStart(iNoiseSection) + ...
-        acceptableEcgLength500(2) - 1;
+        acceptableEcgLength500 - 1;
 
     % All noise signals for this section.
     thisNoiseSection = noiseSignal(noiseSectionStart(iNoiseSection) : ...
         noiseSectionEnd, :);
 
     initialGenerateNoise.("EM_Noise"){iNoiseSection, 1} = noiseSignalModeling(...
-        thisNoiseSection, DEFAULT_Fs, ...
+        thisNoiseSection, ecgFs, ...
         numberOfGeneratedNoisySignals);
 
 
@@ -90,112 +96,104 @@ for iEcgFile = 1 : nEcgFiles
 
     % If the file contains one variable it will be taken as the ecg
     % signal.
-    rawEcgSignal = TempData.(tempDataFieldNames{1});
+    rawEcgSignal = TempData.(tempDataFieldNames{1}).ecgSignal;
 
-    % Get the length of the raw ecg signal and calcualte the acceptable
-    % length using updatedEcgFs.
-    lengthOfRawEcgSignal = numel(rawEcgSignal);
-    acceptableEcgLength = [AverageEcgLength - 3, AverageEcgLength + 3];
-    acceptableEcgLength = acceptableEcgLength .* DEFAULT_Fs;
+    % Trim this signal to be 30 seconds in duration.
+    rawEcgSignal = rawEcgSignal(1 : acceptableEcgLength500);
 
-    % If the raw ecg signal is of acceptable length process the data to
-    % scale the noise for each section with respect to SNR.
-    if (lengthOfRawEcgSignal >= acceptableEcgLength(1)) && ...
-            (lengthOfRawEcgSignal <= acceptableEcgLength(2))
+    % Initial data table. One table will be generated for each valid
+    % file and stored in a seperate file in result folder.
+    [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSections);
 
-        % Initial data table. One table will be generated for each valid
-        % file and stored in a seperate file in result folder.
-        [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSections);
+    % Make sure the ecg signal is in column orientation and store the
+    % data and file name in the data table.
+    rawEcgSignal = rawEcgSignal(:);
+    DataTable.ecgSignal(1, 1) = {rawEcgSignal};
+    DataTable.FileName(1, 1) = ...
+        ecgSignalDirInfo(iEcgFile).name(1 : end - 4);
 
-        % Make sure the ecg signal is in column orientation and store the
-        % data and file name in the data table.
-        ecgSignal = ecgSignal(:);
-        DataTable.ecgSignal(1, 1) = {ecgSignal};
-        DataTable.FileName(1, 1) = ...
-            ecgSignalDirInfo(iEcgFile).name(1 : end - 4);
+    % Get the length of the current ecg signal.
+    lengthOfThisEcgSignal = numel(rawEcgSignal);
 
-        % Get the length of the current ecg signal.
-        lengthOfThisEcgSignal = numel(ecgSignal);
+    % Detect the r-peak locations.
+    qrsLocations = TempData.(string(tempDataFieldNames)).qrsPeaks;
 
-        % Detect the r-peak locations.
-        qrsLocations = TempData.(tempDataFieldNames{2});
+    % Trim this to 30 seconds of data
+    qrsValidFlag = find(qrsLocations <= lengthOfThisEcgSignal);
+    qrsLocations = qrsLocations(1 : numel(qrsValidFlag));
 
-        % Convert the qrs search window to samples. This window will be used to
-        % calculate the qrs amplitude.
-        qrsSearchWindow = round(QRS_SEARCH_WINDOW * DEFAULT_Fs);
+    % Convert the qrs search window to samples. This window will be used to
+    % calculate the qrs amplitude.
+    qrsSearchWindow = round(QRS_SEARCH_WINDOW * ecgFs);
 
-        % Per-allocate memory.
-        nQrsLocations = numel(qrsLocations);
-        qrsPeakToPeak = nan(nQrsLocations, 1);
+    % Per-allocate memory.
+    nQrsLocations = numel(qrsLocations);
+    qrsPeakToPeak = nan(nQrsLocations, 1);
 
-        % Calculate the peak to peak amplitude of the qrs complexes.
-        for jQrsLocations = 1 : nQrsLocations
+    % Calculate the peak to peak amplitude of the qrs complexes.
+    for jQrsLocations = 1 : nQrsLocations
 
-            if (qrsLocations(jQrsLocations) + qrsSearchWindow <= ...
-                    lengthOfThisEcgSignal) && (qrsLocations(jQrsLocations) - ...
-                    qrsSearchWindow >= 1)
+        if (qrsLocations(jQrsLocations) + qrsSearchWindow <= ...
+                lengthOfThisEcgSignal) && (qrsLocations(jQrsLocations) - ...
+                qrsSearchWindow >= 1)
 
-                qrsAmpMax = max(ecgSignal(qrsLocations(jQrsLocations) - ...
-                    qrsSearchWindow : qrsLocations(jQrsLocations) + qrsSearchWindow));
-                qrsAmpMin = min(ecgSignal(qrsLocations(jQrsLocations) - ...
-                    qrsSearchWindow : qrsLocations(jQrsLocations) + qrsSearchWindow));
-                qrsPeakToPeak(jQrsLocations, 1) = qrsAmpMax - qrsAmpMin;
-
-            end
+            qrsAmpMax = max(rawEcgSignal(qrsLocations(jQrsLocations) - ...
+                qrsSearchWindow : qrsLocations(jQrsLocations) + qrsSearchWindow));
+            qrsAmpMin = min(rawEcgSignal(qrsLocations(jQrsLocations) - ...
+                qrsSearchWindow : qrsLocations(jQrsLocations) + qrsSearchWindow));
+            qrsPeakToPeak(jQrsLocations, 1) = qrsAmpMax - qrsAmpMin;
 
         end
-
-        % Convert the peak to peak qrs amplitude to power. This is the correct
-        % transformation for a sine wave. In this instance, it approximates close
-        % enough for measurement. See the PDF of ecg SNR report for derivation.
-        qrsPeakToPeakPower = (mean(qrsPeakToPeak, 'omitnan') ^ 2) / 8;
-
-        % Now using the qrs peak to peak power all the noises in each
-        % section will be scaled for every SNR level.
-        for kSNR = 1 : nSNR
-
-            thisNoise = initialGenerateNoise.(noiseDataFieldNames);
-
-            for mSection = 1 : maxNosieSections
-
-                thisNoiseSection = thisNoise{mSection, 1};
-
-                for iGenSignal = 1 : numberOfGeneratedNoisySignals + 1
-
-                    thisNoiseSignal = thisNoiseSection{iGenSignal, 1};
-
-                    thisNoiseSignal = thisNoiseSignal(1 : lengthOfThisEcgSignal);
-
-                    % Calculate power of noise signals.
-                    thisNoiseSignalPower = ...
-                        computeRmsNoiseAmp(thisNoiseSignal) ^ 2;
-
-                    % Calculate the scale factor which is required to
-                    % achieve the desired SNR level with each noisy
-                    % signal.
-                    scaleFactor = sqrt(qrsPeakToPeakPower / ...
-                        (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
-
-                    DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
-                        (noiseNames){iGenSignal, 1} = ...
-                        thisNoiseSignal .* scaleFactor;
-
-                end
-
-            end
-
-        end
-
-        % Generate the current data file name to store the results.
-        dataFileName = fullfile(resultDataFolder, ...
-            ecgSignalDirInfo(validEcgFilesIndex(iEcgFile)).name(1 : end - 4));
-
-        % Save the results.
-        save([dataFileName, '.mat'], 'DataTable', "DEFAULT_Fs");
 
     end
 
-    updatedEcgFs = ecgFs;
+    % Convert the peak to peak qrs amplitude to power. This is the correct
+    % transformation for a sine wave. In this instance, it approximates close
+    % enough for measurement. See the PDF of ecg SNR report for derivation.
+    qrsPeakToPeakPower = (mean(qrsPeakToPeak, 'omitnan') ^ 2) / 8;
+
+    % Now using the qrs peak to peak power all the noises in each
+    % section will be scaled for every SNR level.
+    for kSNR = 1 : nSNR
+
+        thisNoise = initialGenerateNoise.("EM_Noise");
+
+        for mSection = 1 : maxNosieSections
+
+            thisNoiseSection = thisNoise{mSection, 1};
+
+            for iGenSignal = 1 : numberOfGeneratedNoisySignals + 1
+
+                thisNoiseSignal = thisNoiseSection{iGenSignal, 1};
+
+                thisNoiseSignal = thisNoiseSignal(1 : lengthOfThisEcgSignal);
+
+                % Calculate power of noise signals.
+                thisNoiseSignalPower = ...
+                    computeRmsNoiseAmp(thisNoiseSignal) ^ 2;
+
+                % Calculate the scale factor which is required to
+                % achieve the desired SNR level with each noisy
+                % signal.
+                scaleFactor = sqrt(qrsPeakToPeakPower / ...
+                    (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
+
+                DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
+                    (string(noiseNames)){iGenSignal, 1} = ...
+                    thisNoiseSignal .* scaleFactor;
+
+            end
+
+        end
+
+    end
+
+    % Generate the current data file name to store the results.
+    dataFileName = fullfile(resultDataFolder, ...
+        ecgSignalDirInfo(iEcgFile).name(1 : end - 4));
+
+    % Save the results.
+    save(dataFileName + '.mat', 'DataTable');
 
 end
 
@@ -242,12 +240,7 @@ function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSecti
 variableNames = {'FileName'  'ecgSignal'  'SectionNum' 'SNR0'};
 fileName = "";
 ecgSignal = cell(1,1);
-noiseStructure.bw = {};
 noiseStructure.em = {};
-noiseStructure.ma = {};
-noiseStructure.pl50 = {};
-noiseStructure.pl60 = {};
-
 
 noiseNames = fieldnames(noiseStructure);
 SectionNum = 1;
