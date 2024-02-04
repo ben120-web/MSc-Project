@@ -38,42 +38,6 @@ function noiseOutputSignals = noiseSignalModeling(noiseInputSignal, fs, ...
 %% Set constants
 MAX_MODEL_ORDER = 300;
 SIGNAL_LENGTH_DIVIDER = 2;
-DEFAULT_FS = 500;
-DEFAULT_SIGNALS_TO_GENERATE = 2;
-DEFAULT_IS_NOISE_SIGNAL_POWERLINE_NOISE = false;
-
-%% Check inputs.
-% Check correct number of arguments.
-minArgs = 1;
-maxArgs = 4;
-narginchk(minArgs, maxArgs);
-
-% Validate noise signal.
-validateStandardInput(noiseInputSignal, '1dSignal', 'noiseInputSignal', 1);
-
-% Validate fs.
-if nargin > 1 && ~isempty(fs)
-
-    validateStandardInput(fs, 'fs', 'fs', 2);
-
-else
-
-    fs = DEFAULT_FS;
-
-end
-
-
-% Validate nOutputSignals.
-if nargin > 2 && ~isempty(nOutputSignals)
-
-    validateattributes(nOutputSignals, {'numeric'}, {'scalar', 'finite', ...
-        'real', 'positive', 'integer'}, mfilename, 'nOutputSignals', 3);
-
-else
-
-    nOutputSignals = DEFAULT_SIGNALS_TO_GENERATE;
-
-end
 
 % Get the length of the signal and pre-allocate memory.
 lengthOfNoiseSignal = numel(noiseInputSignal);

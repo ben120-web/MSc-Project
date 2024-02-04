@@ -34,7 +34,7 @@ numOfCleanSignals = 10000;
 % parameter values.
 [anglesOfExtrema, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_ANGLES_OF_EXTREMA, MAX_ANGLES_OF_EXTRAMA);
 [zPositionOfExtrema, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_Z_POSITION_OF_EXTRAMA, MAX_Z_POSITION_OF_EXTRAMA);
-[gaussianWidth, ~] = latinHyperCuDefbeSampling(numOfCleanSignals, MIN_GAUSSIAN_WIDTH, MAX_GAUSSIAN_WIDTH);
+[gaussianWidth, ~] = latinHyperCubeSampling(numOfCleanSignals, MIN_GAUSSIAN_WIDTH, MAX_GAUSSIAN_WIDTH);
 
 % Number of heartrates
 numOfHeartRates = numel(HR_TO_GENERATE);
