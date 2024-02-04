@@ -178,9 +178,12 @@ for iEcgFile = 1 : nEcgFiles
                 scaleFactor = sqrt(qrsPeakToPeakPower / ...
                     (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
 
+                scaledSignal = thisNoiseSignal .* scaleFactor;
+                
+                % Save the noise corrupt signals in the data table.
                 DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
                     (string(noiseNames)){iGenSignal, 1} = ...
-                    thisNoiseSignal .* scaleFactor;
+                    scaledSignal + rawEcgSignal;
 
             end
 
