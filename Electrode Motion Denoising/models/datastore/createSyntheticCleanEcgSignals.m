@@ -1,4 +1,20 @@
 function createSyntheticCleanEcgSignals()
+% createSyntheticCleanEcgSignals - generates a database of clean ECG
+% signals with different feature morphologies. Saves these in a unique
+% directory.
+%
+% Syntax: createSyntheticCleanEcgSignals()
+%
+% Inputs:
+%    None Required.
+%
+% Outputs: none.
+%
+% Other m-files required: none.
+% Subfunctions: none.
+% MAT-files required: generic-features-noise-sources.mat.
+
+%------------- BEGIN CODE --------------
 
 % Define paraters
 samplingFrequency = 500; % Always work at 500Hz.
