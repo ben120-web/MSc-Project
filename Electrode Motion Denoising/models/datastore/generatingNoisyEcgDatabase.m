@@ -43,16 +43,6 @@ lengthOfNoiseSignal = numel(initialNoiseData.emNoise);
 % Define the noise signal.
 noiseSignal = initialNoiseData.emNoise;
 
-% Calculate the maximum possible noise sections that are possible and
-% update the maximum noise section value if required.
-maxPossibleNoiseSections = floor(lengthOfNoiseSignal / acceptableEcgLength500);
-
-if maxNosieSections > maxPossibleNoiseSections
-
-    maxNosieSections = maxPossibleNoiseSections;
-
-end
-
 % Get the starting index of each noise section.
 noiseSectionStart = 1 : acceptableEcgLength500 : lengthOfNoiseSignal;
 
