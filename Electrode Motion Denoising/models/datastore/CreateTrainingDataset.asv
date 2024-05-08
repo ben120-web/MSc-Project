@@ -7,16 +7,7 @@ function CreateTrainingDataset()
 % electrode motion looks like (Both temperal and frequency
 % characteristics).
 %
-% Step 1: ExctractAndPreProcessNoiseSignal - Extracts the Electrode Motion
-% noise file from Physionet. This noise file has been collected through
-% specialised placement of electrodes.
-%
-% Step 2: createSyntheticCleanEcgSignals - Generates synthetic ECG signals
-% based on 1st order differential equations. Sampling is used to generate
-% signals with a range of morphologies.
-%
-% Step 3: generateNoisyDatabase - Corrupts the clean ECG signals with
-% variuous amounts of electrode motion noise. 
+% Step 1: E
 
 %% Main processing
 

@@ -25,7 +25,6 @@ else:
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
-
 def get_rms(records):
     return math.sqrt(sum([x ** 2 for x in records]) / len(records))
 
