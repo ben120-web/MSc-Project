@@ -4,7 +4,9 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 % generatingNoisyEcgDatabase - Models new noise sections, then corrupts the
 % clean ECG's with pre-defined SNR levels of electrode motion noise.
 %
-% Syntax: generatingNoisyEcgDatabase()
+% Syntax: generatingNoisyEcgDatabase(noiseSignalPath, ...
+%    ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
+%    numberOfGeneratedNoisySignals)
 %
 % Inputs:
 %    noiseSignalPath - Directory to real noise .mat file.
@@ -58,7 +60,7 @@ for iNoiseSection = 1 : maxNosieSections
         noiseSectionEnd, :);
 
     initialGenerateNoise.("EM_Noise"){iNoiseSection, 1} = noiseSignalModeling(...
-        thisNoiseSection, ecgFs, ...
+        thisNoiseSection, ...
         numberOfGeneratedNoisySignals);
 
 
