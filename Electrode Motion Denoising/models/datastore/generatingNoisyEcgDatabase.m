@@ -188,7 +188,7 @@ for iEcgFile = 1 : nEcgFiles
         ecgSignalDirInfo(iEcgFile).name(1 : end - 4));
 
     % Save the results.
-    save(dataFileName + '.mat', 'DataTable');
+    save(dataFileName + '.h5', 'DataTable');
 
 end
 

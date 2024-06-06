@@ -82,6 +82,10 @@ for iHeartRate = 1 : numOfHeartRates
 
         % Save the outputs with appropriate file names.
         fileName = fullfile(string(meanHr) + "BPM_" + string(iSignal) + "_cleanSignal");
+
+        % Convert to HDF5 Format
+        fileName = strrep(fileName, '.mat', '.h5');
+
         save(fullfile(outputFolder, fileName), "signalData")
 
     end
