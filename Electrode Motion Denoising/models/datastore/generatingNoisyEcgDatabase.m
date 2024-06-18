@@ -78,7 +78,7 @@ nEcgFiles = height(ecgSignalDirInfo);
 nSNR = numel(SNR);
 
 % Process each valid ecg file.
-for iEcgFile = 1 : nEcgFiles
+for iEcgFile = 1 : nEcgFiles - 3
 
     ecgSignalFileName = fullfile(ecgSignalPath, ...
         ecgSignalDirInfo(iEcgFile).name);
