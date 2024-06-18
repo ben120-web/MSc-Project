@@ -65,9 +65,14 @@ for iHeartRate = 1 : numOfHeartRates
 
         % Call ECGSYN MATLAB function to generate signal.
         try
-            [cleanEcgSignal, qrsLocations] = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
+            cleanEcgSignal = ecgsyn(samplingFrequency, 256, 0, meanHr, ...
                 1, 0.5, samplingFrequency, angleData, zData, ...
                 widthData);
+
+            % Get QRS location
+            [~, qrsLocations] = findpeaks(cleanEcgSignal, 'MinPeakHeight', ...
+                mean(cleanEcgSignal) + 0.5 * std(cleanEcgSignal), ...
+                'MinPeakDistance', round(0.6 * samplingFrequency));
 
             % Call function to validate the ECG is realistic.
             validateEcgIsRealistic(cleanEcgSignal, qrsLocations, samplingFrequency);
@@ -161,32 +166,113 @@ function validateEcgIsRealistic(ecgSignal, peakLocations, samplingFrequency)
 % is determined from set physiological limits of each feature within the
 % ECG signal.
 
-%% We need to import a python wrapper function.
+%% Lets use a MATLAB class to get the waveform data we require.
 
-% Add the path to the Python script
-if count(py.sys.path, '') == 0
-    insert(py.sys.path, int32(0), '');
+fiducials = extract_ecg_fiducials(ecgSignal, peakLocations, samplingFrequency);
+
+
 end
 
-% Import the Python module
-pyModule = py.importlib.import_module('extract_features.py');
+function fiducials = extract_ecg_fiducials(ecgSignal, peakLocations, samplingRate)
+% Function to extract fiducial points (onset, peak, offset) for P wave,
+% QRS complex, and T wave from an ECG signal.
+% INPUTS:
+% ecgSignal: Array containing the ECG signal.
+% samplingRate: Sampling rate of the ECG signal.
+% OUTPUT:
+% fiducials: Structure containing the onset, peak, and offset of P wave,
+% QRS complex, and T wave.
 
-% Call from_Rpeaks function
-features_rpeaks = pyModule.from_Rpeaks(ecgSignal, peakLocations, samplingFrequency);
+% Initialize structure to hold fiducials
+fiducials = struct('P_onset', [], 'P_peak', [], 'P_offset', [], ...
+    'QRS_onset', [], 'QRS_peak', [], 'QRS_offset', [], ...
+    'T_onset', [], 'T_peak', [], 'T_offset', []);
 
-% Display the features extracted from R-peaks
-disp(features_rpeaks);
+% Bandpass filter the ECG signal to remove baseline wander and noise
+ecgFiltered = bandpass(ecgSignal, [0.5 45], samplingRate);
 
-% Example fiducials dictionary (these should be replaced with your actual data)
-fiducials = py.dict(pyargs('ECG_P_Peaks', [50, 150, 250, 350, 450, 550, 650, 750, 850], ...
-                           'ECG_Q_Peaks', [90, 190, 290, 390, 490, 590, 690, 790, 890], ...
-                           'ECG_S_Peaks', [110, 210, 310, 410, 510, 610, 710, 810, 910], ...
-                           'ECG_T_Peaks', [130, 230, 330, 430, 530, 630, 730, 830, 930]));
+R_locs = peakLocations;
 
-% Call from_waves function
-features_waves = pyModule.from_waves(sig, peaks_locs, fiducials, sampling_rate);
+% Loop through each detected R peak to find fiducial points
+for i = 1 : length(R_locs)
 
-% Display the features extracted from all fiducials
-disp(features_waves);
+    % Define search windows relative to R peak location
+    win_P = max(1, R_locs(i) - round(0.3 * samplingRate)) ...
+        : R_locs(i) - round(0.1 * samplingRate);
+    
+    win_QRS = max(1, R_locs(i) - round(0.1 * samplingRate)):min(length(ecgSignal), R_locs(i) + round(0.1 * samplingRate));
+    win_T = R_locs(i) + round(0.1 * samplingRate):min(length(ecgSignal), R_locs(i) + round(0.4 * samplingRate));
 
+    % P wave detection
+    [P_peak_val, P_peak_idx] = max(ecgFiltered(win_P));
+    P_peak = win_P(P_peak_idx);
+    P_onset = find_onset(ecgFiltered, P_peak, -1, samplingRate);
+    P_offset = find_offset(ecgFiltered, P_peak, 1, samplingRate);
+
+    % QRS complex detection
+    [QRS_peak_val, QRS_peak_idx] = max(ecgFiltered(win_QRS));
+    QRS_peak = win_QRS(QRS_peak_idx);
+    QRS_onset = find_onset(ecgFiltered, QRS_peak, -1, samplingRate);
+    QRS_offset = find_offset(ecgFiltered, QRS_peak, 1, samplingRate);
+
+    % T wave detection
+    [T_peak_val, T_peak_idx] = max(ecgFiltered(win_T));
+    T_peak = win_T(T_peak_idx);
+    T_onset = find_onset(ecgFiltered, T_peak, -1, samplingRate);
+    T_offset = find_offset(ecgFiltered, T_peak, 1, samplingRate);
+
+    % Store fiducials
+    fiducials.P_onset = [fiducials.P_onset, P_onset];
+    fiducials.P_peak = [fiducials.P_peak, P_peak];
+    fiducials.P_offset = [fiducials.P_offset, P_offset];
+    fiducials.QRS_onset = [fiducials.QRS_onset, QRS_onset];
+    fiducials.QRS_peak = [fiducials.QRS_peak, QRS_peak];
+    fiducials.QRS_offset = [fiducials.QRS_offset, QRS_offset];
+    fiducials.T_onset = [fiducials.T_onset, T_onset];
+    fiducials.T_peak = [fiducials.T_peak, T_peak];
+    fiducials.T_offset = [fiducials.T_offset, T_offset];
+end
+end
+
+function onset = find_onset(signal, peak, direction, samplingRate)
+% Find the onset of a wave given its peak and search direction
+
+threshold = 0.1 * abs(signal(peak)); % Threshold to determine onset
+
+if direction == -1
+    idx = peak:-1 : max(1, peak - round(0.2 * samplingRate));
+else
+    idx = peak:min(length(signal), peak + round(0.2 * samplingRate));
+end
+for i = idx
+    if abs(signal(i)) < threshold
+        onset = i;
+        return;
+    end
+end
+
+onset = idx(end);
+
+end
+
+function offset = find_offset(signal, peak, direction, samplingRate)
+% Find the offset of a wave given its peak and search direction
+
+threshold = 0.1 * abs(signal(peak)); % Threshold to determine offset\
+
+if direction == 1
+    idx = peak:min(length(signal), peak + round(0.2 * samplingRate));
+else
+    idx = peak:-1:max(1, peak - round(0.2 * samplingRate));
+end
+
+for i = idx
+    if abs(signal(i)) < threshold
+        offset = i;
+        return;
+    end
+end
+
+offset = idx(end);
+end
 
