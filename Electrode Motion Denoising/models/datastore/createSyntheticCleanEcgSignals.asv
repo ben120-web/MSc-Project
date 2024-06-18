@@ -188,6 +188,5 @@ features_waves = pyModule.from_waves(sig, peaks_locs, fiducials, sampling_rate);
 
 % Display the features extracted from all fiducials
 disp(features_waves);
-end
 
 
