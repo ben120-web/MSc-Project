@@ -75,10 +75,13 @@ for iHeartRate = 1 : numOfHeartRates
                 'MinPeakDistance', round(0.6 * samplingFrequency));
 
             % Call function to validate the ECG is realistic.
-            validateEcgIsRealistic(cleanEcgSignal, qrsLocations, samplingFrequency);
-            
-            % Save all peak locations
-            peakLocations = find(qrsLocations == 3);
+            signalValid = validateEcgIsRealistic(cleanEcgSignal, ...
+                qrsLocations, samplingFrequency);
+
+            % If the signal is not valid, continue loop.
+            if ~signalValid
+                continue
+            end
 
             % Create a structure containing data
             signalData.ecgSignal = cleanEcgSignal;
@@ -160,17 +163,59 @@ X_scaled=SLOPE.*X_normalized+OFFSET;
 
 end
 
-function validateEcgIsRealistic(ecgSignal, peakLocations, samplingFrequency)
+function signalValid = validateEcgIsRealistic(ecgSignal, peakLocations, samplingFrequency)
 % Function to validate if the morphologies of the ECG signal is realistic,
 % if deemed unrealistic, the signal is scrapped from the database. Realism
 % is determined from set physiological limits of each feature within the
 % ECG signal.
 
-%% Lets use a MATLAB class to get the waveform data we require.
+% Constants
+P_WAVE_DURATION = [0.06, 0.11];
+QRS_DURATION = [0.08, 0.12];
+T_WAVE_DURATION = [0.1, 0.25];
+P_WAVE_AMPLITUDE = [0.1, 0.2];
+QRS_AMPLITUDE = [0.5, 2];
+T_WAVE_AMPLITUDE = [0.1, 0.5];
+QT_INTERVAL = [0.35, 0.45];
 
 fiducials = extract_ecg_fiducials(ecgSignal, peakLocations, samplingFrequency);
 
-% Lets calculate the features we need to check.
+% Since all beats are the same, we only need to validate on 1.
+pOnset = fiducials.P_onset(1);
+pPeak = fiducials.P_peak(1);
+pOffset = fiducials.P_offset(1);
+qOnset = fiducials.QRS_onset(1);
+rPeak = fiducials.QRS_peak(1);
+qOffset = fiducials.QRS_offset(1);
+tOnset = fiducials.T_onset(1);
+tPeak = fiducials.T_peak(1);
+tOffset = fiducials.T_offset(1);
+
+% Lets calculate the features we need to check. (convert to s and mV)
+pWaveDuration = abs(pOffset - pOnset) / 500;
+QRSDuration = abs(qOffset - qOnset) / 500;
+tWaveDuration = abs(tOffset - tOnset) / 500;
+pWaveAmplitude = ecgSignal(pPeak);
+qrsAmplitude = ecgSignal(rPeak);
+tWaveAmplitude = ecgSignal(tPeak);
+qtInterval = abs(tOffset - qOnset) / 500;
+
+% Perform validation check. Only pass a signal that meets all requirements.
+if pWaveDuration < P_WAVE_DURATION(2) && pWaveDuration > P_WAVE_DURATION(1) ...
+        && QRSDuration < QRS_DURATION(2) && QRSDuration > QRS_DURATION(1) ...
+        && tWaveDuration < T_WAVE_DURATION(2) && tWaveDuration > T_WAVE_DURATION(1) ...
+        && pWaveAmplitude < P_WAVE_AMPLITUDE(2) && pWaveAmplitude > P_WAVE_AMPLITUDE(1) ...
+        && qrsAmplitude < QRS_AMPLITUDE(2) && qrsAmplitude > QRS_AMPLITUDE(1) ...
+        && tWaveAmplitude < T_WAVE_AMPLITUDE(2) && tWaveAmplitude > T_WAVE_AMPLITUDE(1) ...
+        && qtInterval < QT_INTERVAL(2) && qtInterval > QT_INTERVAL(1)
+
+    % Set flag as valid.
+    signalValid = true;
+else
+    signalValid = false;
+end
+
+
 
 
 end
@@ -210,19 +255,19 @@ for iPeak = 1 : length(R_locs)
     win_T = R_locs(iPeak) + round(0.1 * samplingRate):min(length(ecgSignal), R_locs(iPeak) + round(0.4 * samplingRate));
 
     % P wave detection
-    [P_peak_val, P_peak_idx] = max(ecgFiltered(win_P));
+    [~, P_peak_idx] = max(ecgFiltered(win_P));
     P_peak = win_P(P_peak_idx);
     P_onset = find_onset(ecgFiltered, P_peak, -1, samplingRate);
     P_offset = find_offset(ecgFiltered, P_peak, 1, samplingRate);
 
     % QRS complex detection
-    [QRS_peak_val, QRS_peak_idx] = max(ecgFiltered(win_QRS));
+    [~, QRS_peak_idx] = max(ecgFiltered(win_QRS));
     QRS_peak = win_QRS(QRS_peak_idx);
     QRS_onset = find_onset(ecgFiltered, QRS_peak, -1, samplingRate);
     QRS_offset = find_offset(ecgFiltered, QRS_peak, 1, samplingRate);
 
     % T wave detection
-    [T_peak_val, T_peak_idx] = max(ecgFiltered(win_T));
+    [~, T_peak_idx] = max(ecgFiltered(win_T));
     T_peak = win_T(T_peak_idx);
     T_onset = find_onset(ecgFiltered, T_peak, -1, samplingRate);
     T_offset = find_offset(ecgFiltered, T_peak, 1, samplingRate);
