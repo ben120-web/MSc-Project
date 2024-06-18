@@ -67,9 +67,17 @@ for iNoiseSection = 1 : maxNosieSections
 end
 
 % Set the path of result folder to store the data.
-resultDataFolder = fullfile(erase(ecgSignalPath, 'cleanSignals'), 'simulatedNoiseData');
+resultDataFolder = fullfile(erase(ecgSignalPath, 'cleanSignals'), 'trainingDataSet');
 
 if ~isfolder(resultDataFolder) mkdir(resultDataFolder); end % Make directory.
+
+% Filter of meta data 
+filterFlag = string({ecgSignalDirInfo.name}) == "AngleData.mat" | ...
+    string({ecgSignalDirInfo.name}) == "widthData.mat" | ...
+    string({ecgSignalDirInfo.name}) == "zData.mat";
+
+
+ecgSignalDirInfo(filterFlag) = [];
 
 % Numer of valid ecg files.
 nEcgFiles = height(ecgSignalDirInfo);
@@ -183,12 +191,9 @@ for iEcgFile = 1 : nEcgFiles
 
     end
 
-    % Generate the current data file name to store the results.
-    dataFileName = fullfile(resultDataFolder, ...
-        ecgSignalDirInfo(iEcgFile).name(1 : end - 4));
-
-    % Save the results.
-    save(dataFileName + '.mat', 'DataTable');
+    % Call function to convert and save each signal to a readable format for
+    % Deep learning models.
+    convertToHDF5Format(DataTable, resultDataFolder);
 
 end
 
@@ -208,6 +213,7 @@ nSignalSeconds = floor(numel(noiseSection) / SIGNAL_FS);
 
 % Calculate RMS value for each second.
 rmsVals = nan(nSignalSeconds, 1);
+
 for iSec = 1 : nSignalSeconds
 
     % Get indexes for start and end of section.
@@ -257,4 +263,80 @@ DataTable.SectionNum(1 : end, 1) = 1 : maxNosieSections;
 DataTable.FileName(:, :) = "";
 
 end
+
+% Function to recursively save data from MATLAB to H5
+function convertToHDF5Format(DataTable, resultDataFolder)
+% Save all signals to a more readable format
+
+% Constants.
+NUM_OF_SNR = 5;
+
+% Assign output folders for clean and noisy signals.
+outputFolderClean = fullfile(resultDataFolder, "cleanSignals");
+outputFolderNoisy = fullfile(resultDataFolder, "noisySignals");
+
+% Create folders if they dont exist.
+if ~isfolder(outputFolderNoisy) mkdir(outputFolderNoisy); end
+if ~isfolder(outputFolderClean) mkdir(outputFolderClean); end
+
+% Extract the filename.
+fileName = table2array(DataTable(1, 1));
+
+% Extract the clean signal.
+cleanSignal = DataTable.ecgSignal{1, 1};
+
+% Save the clean signal in H5 format.
+save(fullfile(outputFolderClean, fileName + '.h5'), 'cleanSignal');
+
+% Now we need to loop through the noisy signals.
+for iSection = 1 : height(DataTable)
+
+    % Extract the section number 
+    sectionNumber = iSection;
+
+    % Loop through each SNR value.
+    for iSNR = 1 : NUM_OF_SNR
+
+        % Index into correspinding SNR column
+        SNRValue = string(DataTable.Properties.VariableNames(:, iSNR + 3));
+
+        % Extract the Data (nested in structs)
+        SNRData = table2array(DataTable(:, iSNR + 3));
+
+        % Grab the section specific noise structure.
+        sectionNoise = SNRData(iSection).em;
+
+        % Loop through each copy (From AR-Modelling)
+        for iCopy = 1 : numel(sectionNoise)
+
+            % Specify the noise type.
+            if iCopy == 1
+                noiseType = 'Original';
+            else
+                noiseType = string(iCopy);
+            end
+
+            % Extract the noisy ECG signal.
+            noisyEcg = cell2mat(sectionNoise(iCopy));
+
+            % Create sub directories for each SNR.
+            outputFolderNoisySub = fullfile(outputFolderNoisy, SNRValue);
+
+            % Make directory
+            if ~isfolder(outputFolderNoisySub) mkdir(outputFolderNoisySub); ...
+            end
+
+            % Let's create a filename based on the type of signal.
+            outputFilename = fullfile(outputFolderNoisySub, ...
+                strcat(erase(fileName, '_cleanSignal'), '-', ...
+                noiseType, '-', string(sectionNumber), '.h5'));
+
+            % Save the signal in h5 format.
+            save(outputFilename, 'noisyEcg');
+        end
+    end
+end
+
+end
+
 %------------- END OF CODE -------------
