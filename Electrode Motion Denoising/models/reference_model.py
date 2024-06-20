@@ -143,7 +143,7 @@ class RCNN(nn.Module):
         self.layer_1 = nn.Sequential(
             nn.Conv1d(in_channels = 1, out_channels = 3, kernel_size = (3)),
             nn.BatchNorm1d(num_features=3),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace = True),
             nn.AvgPool1d(kernel_size=1)
         )
 
@@ -151,7 +151,7 @@ class RCNN(nn.Module):
             nn.Conv1d(in_channels=3, out_channels=5, kernel_size=(3)),
             nn.BatchNorm1d(num_features=5),
             nn.ReLU(inplace=True),
-            nn.AvgPool1d(kernel_size=1)
+            nn.AvgPool1d(kernel_size = 1)
         )
 
         self.layer_3 = nn.Sequential(
