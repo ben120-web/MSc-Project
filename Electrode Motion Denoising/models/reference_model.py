@@ -116,8 +116,9 @@ nst_testloader = DataLoader(nst_test, batch_size=batch_size, shuffle=False, num_
 
 print(len(arr_trainloader), len(arr_testloader))
 
-## RCNN MODEL.
+## Region-Based Convolutional Neural Network (RCNN) MODEL.
 class RCNN(nn.Module):
+  
     def __init__(self, input_size):
         super(RCNN, self).__init__()
 
@@ -140,7 +141,7 @@ class RCNN(nn.Module):
         self.cv4_out = int(((self.cv3_out - self.cv4_k) / self.cv4_s) + 1)
 
         self.layer_1 = nn.Sequential(
-            nn.Conv1d(in_channels=1, out_channels=3, kernel_size=(3)),
+            nn.Conv1d(in_channels = 1, out_channels = 3, kernel_size = (3)),
             nn.BatchNorm1d(num_features=3),
             nn.ReLU(inplace=True),
             nn.AvgPool1d(kernel_size=1)
