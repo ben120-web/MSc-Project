@@ -1,29 +1,31 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from torch.autograd.variable import Variable
 import torch.optim as optim
 import math
 
-from sklearn.model_selection import train_test_split
-
 import numpy as np
-import os
-import glob
-import matplotlib.pyplot as plt
-import math 
-import json as js
+import matplotlib.pyplot as plt 
+from torch.utils.data import Dataset, DataLoader
+from signal_dataset_loader import get_dataloader  # Import the data loader function
 
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 if torch.cuda.is_available():
   cuda = True
-  print('Using: ' +str(torch.cuda.get_device_name(device)))
+  print('Using: ' + str(torch.cuda.get_device_name(device)))
 else:
   cuda = False
   print('Using: CPU')
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+
+# Example to create DataLoaders for training and testing
+clean_signals_dir = 'C:\B-Secur\MSc Project\ElectrodeMotionionDenoisingFramework\Electrode Motion Denoising\models\datastore\trainingDataSet\cleanSignals'
+noisy_signals_dir = 'C:\B-Secur\MSc Project\ElectrodeMotionionDenoisingFramework\Electrode Motion Denoising\models\datastore\trainingDataSet\noisySignals'
+snr_levels = ['SNR0', 'SNR6', 'SNR12', 'SNR18', 'SNR24']  # List all desired SNR levels
+
+train_dataloader = get_dataloader(clean_signals_dir, noisy_signals_dir, snr_level, batch_size = 20, shuffle = True, num_workers = 2)
+
 
 def get_rms(records):
     return math.sqrt(sum([x ** 2 for x in records]) / len(records))
