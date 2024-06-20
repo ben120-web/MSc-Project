@@ -74,9 +74,6 @@ for iHeartRate = 1 : numOfHeartRates
                 mean(cleanEcgSignal) + 0.5 * std(cleanEcgSignal), ...
                 'MinPeakDistance', round(0.6 * samplingFrequency));
 
-            % Apply filter to remove baseline drift.
-            cleanEcgSignal = remove_baseline_drift(cleanEcgSignal, samplingFrequency);
-
             % Call function to validate the ECG is realistic
             signalValid = validateEcgIsRealistic(cleanEcgSignal, ...
                 qrsLocations, samplingFrequency);
@@ -143,21 +140,21 @@ function signalValid = validateEcgIsRealistic(ecgSignal, peakLocations, sampling
     T_WAVE_DURATION = [0.08, 0.5];
     P_WAVE_AMPLITUDE = [0.05, 0.5];
     QRS_AMPLITUDE = [0.06, 2];
-    T_WAVE_AMPLITUDE = [0.01, 0.9];
+    T_WAVE_AMPLITUDE = [0.01, 0.5];
     QT_INTERVAL = [0.15, 0.66];
 
     fiducials = extract_ecg_fiducials(ecgSignal, peakLocations, samplingFrequency);
 
     % Since all beats are the same, we only need to validate on 1.
-    pOnset = fiducials.P_onset(1) - 10;
+    pOnset = fiducials.P_onset(1) -12;
     pPeak = fiducials.P_peak(1);
-    pOffset = fiducials.P_offset(1) + 10;
-    qOnset = fiducials.QRS_onset(1) - 10;
+    pOffset = fiducials.P_offset(1);
+    qOnset = fiducials.QRS_onset(1);
     rPeak = fiducials.QRS_peak(1);
-    qOffset = fiducials.QRS_offset(1) + 10;
-    tOnset = fiducials.T_onset(1) - 10;
+    qOffset = fiducials.QRS_offset(1);
+    tOnset = fiducials.T_onset(1);
     tPeak = fiducials.T_peak(1);
-    tOffset = fiducials.T_offset(1) + 10;
+    tOffset = fiducials.T_offset(1);
 
     % Lets calculate the features we need to check. (convert to s and mV)
     pWaveDuration = abs(pOffset - pOnset) / samplingFrequency;
@@ -301,27 +298,4 @@ function offset = find_offset(ecgFiltered, peak, direction, samplingRate)
 
     offset = idx;
 end
-
-function ecgFiltered = remove_baseline_drift(ecgSignal, samplingRate)
-    % remove_baseline_drift - Removes baseline drift from ECG signal
-    %
-    % Syntax: ecgFiltered = remove_baseline_drift(ecgSignal, samplingRate)
-    %
-    % Inputs:
-    %    ecgSignal - Array containing the ECG signal
-    %    samplingRate - Sampling rate of the ECG signal
-    %
-    % Outputs:
-    %    ecgFiltered - Baseline drift removed ECG signal
-
-    % Define the cutoff frequency for the high-pass filter
-    cutoffFreq = 0.5; % 0.5 Hz cutoff frequency to remove baseline drift
-
-    % Design the high-pass filter using a Butterworth filter
-    [b, a] = butter(2, cutoffFreq / (samplingRate / 2), 'high');
-
-    % Apply the high-pass filter to the ECG signal
-    ecgFiltered = filtfilt(b, a, ecgSignal);
-end
-
 % ---------------------- END OF CODE ------------------------------
