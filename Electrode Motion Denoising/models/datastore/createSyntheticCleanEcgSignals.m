@@ -74,6 +74,9 @@ for iHeartRate = 1 : numOfHeartRates
                 mean(cleanEcgSignal) + 0.5 * std(cleanEcgSignal), ...
                 'MinPeakDistance', round(0.6 * samplingFrequency));
 
+            % Apply filter to remove baseline drift.
+            cleanEcgSignal = remove_baseline_drift(cleanEcgSignal, samplingFrequency);
+
             % Call function to validate the ECG is realistic
             signalValid = validateEcgIsRealistic(cleanEcgSignal, ...
                 qrsLocations, samplingFrequency);
@@ -298,4 +301,27 @@ function offset = find_offset(ecgFiltered, peak, direction, samplingRate)
 
     offset = idx;
 end
+
+function ecgFiltered = remove_baseline_drift(ecgSignal, samplingRate)
+    % remove_baseline_drift - Removes baseline drift from ECG signal
+    %
+    % Syntax: ecgFiltered = remove_baseline_drift(ecgSignal, samplingRate)
+    %
+    % Inputs:
+    %    ecgSignal - Array containing the ECG signal
+    %    samplingRate - Sampling rate of the ECG signal
+    %
+    % Outputs:
+    %    ecgFiltered - Baseline drift removed ECG signal
+
+    % Define the cutoff frequency for the high-pass filter
+    cutoffFreq = 0.5; % 0.5 Hz cutoff frequency to remove baseline drift
+
+    % Design the high-pass filter using a Butterworth filter
+    [b, a] = butter(2, cutoffFreq / (samplingRate / 2), 'high');
+
+    % Apply the high-pass filter to the ECG signal
+    ecgFiltered = filtfilt(b, a, ecgSignal);
+end
+
 % ---------------------- END OF CODE ------------------------------
