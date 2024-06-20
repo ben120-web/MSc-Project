@@ -140,21 +140,21 @@ function signalValid = validateEcgIsRealistic(ecgSignal, peakLocations, sampling
     T_WAVE_DURATION = [0.08, 0.5];
     P_WAVE_AMPLITUDE = [0.05, 0.5];
     QRS_AMPLITUDE = [0.06, 2];
-    T_WAVE_AMPLITUDE = [0.01, 0.9];
+    T_WAVE_AMPLITUDE = [0.01, 0.5];
     QT_INTERVAL = [0.15, 0.66];
 
     fiducials = extract_ecg_fiducials(ecgSignal, peakLocations, samplingFrequency);
 
     % Since all beats are the same, we only need to validate on 1.
-    pOnset = fiducials.P_onset(1) - 10;
+    pOnset = fiducials.P_onset(1) -12;
     pPeak = fiducials.P_peak(1);
-    pOffset = fiducials.P_offset(1) + 10;
-    qOnset = fiducials.QRS_onset(1) - 10;
+    pOffset = fiducials.P_offset(1);
+    qOnset = fiducials.QRS_onset(1);
     rPeak = fiducials.QRS_peak(1);
-    qOffset = fiducials.QRS_offset(1) + 10;
-    tOnset = fiducials.T_onset(1) - 10;
+    qOffset = fiducials.QRS_offset(1);
+    tOnset = fiducials.T_onset(1);
     tPeak = fiducials.T_peak(1);
-    tOffset = fiducials.T_offset(1) + 10;
+    tOffset = fiducials.T_offset(1);
 
     % Lets calculate the features we need to check. (convert to s and mV)
     pWaveDuration = abs(pOffset - pOnset) / samplingFrequency;
