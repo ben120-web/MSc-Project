@@ -273,7 +273,8 @@ DataTable.FileName(:, :) = "";
 
 end
 
-function convertToHDF5Format(DataTable, resultDataFolder, accessToken)
+% Function to recursively save data from MATLAB to H5
+function convertToHDF5Format(DataTable, resultDataFolder)
 % Save all signals to a more readable format
 
 % Constants.
@@ -285,9 +286,9 @@ BOUNDARY = '----WebKitFormBoundary7MA4YWxkTrZu0gW';
 outputFolderClean = fullfile(resultDataFolder, "cleanSignals");
 outputFolderNoisy = fullfile(resultDataFolder, "noisySignals");
 
-% Create folders if they don't exist.
-if ~isfolder(outputFolderNoisy); mkdir(outputFolderNoisy); end
-if ~isfolder(outputFolderClean); mkdir(outputFolderClean); end
+% Create folders if they dont exist.
+if ~isfolder(outputFolderNoisy) mkdir(outputFolderNoisy); end
+if ~isfolder(outputFolderClean) mkdir(outputFolderClean); end
 
 % Extract the filename.
 fileName = table2array(DataTable(1, 1));
@@ -296,22 +297,18 @@ fileName = table2array(DataTable(1, 1));
 cleanSignal = DataTable.ecgSignal{1, 1};
 
 % Save the clean signal in H5 format.
-cleanSignalPath = fullfile(outputFolderClean, fileName + '.h5');
-saveHDF5(cleanSignalPath, cleanSignal);
-
-% Upload clean signal to Google Drive
-uploadToDrive(cleanSignalPath, accessToken, UPLOAD_URL, BOUNDARY);
+save(fullfile(outputFolderClean, fileName + '.h5'), 'cleanSignal');
 
 % Now we need to loop through the noisy signals.
 for iSection = 1 : height(DataTable)
 
-    % Extract the section number
+    % Extract the section number 
     sectionNumber = iSection;
 
     % Loop through each SNR value.
     for iSNR = 1 : NUM_OF_SNR
 
-        % Index into corresponding SNR column
+        % Index into correspinding SNR column
         SNRValue = string(DataTable.Properties.VariableNames(:, iSNR + 3));
 
         % Extract the Data (nested in structs)
@@ -337,67 +334,39 @@ for iSection = 1 : height(DataTable)
             outputFolderNoisySub = fullfile(outputFolderNoisy, SNRValue);
 
             % Make directory
-            if ~isfolder(outputFolderNoisySub); mkdir(outputFolderNoisySub); end
+            if ~isfolder(outputFolderNoisySub) mkdir(outputFolderNoisySub); ...
+            end
 
-            % Create the filename based on the type of signal.
+            % Let's create a filename based on the type of signal.
             outputFilename = fullfile(outputFolderNoisySub, ...
                 strcat(erase(fileName, '_cleanSignal'), '-', ...
                 noiseType, '-', string(sectionNumber), '.h5'));
 
-            % Save the noisy signal in H5 format.
-            saveHDF5(outputFilename, noisyEcg);
+            % Create metadata part for google drive upload.
+            metadata = struct('name', strcat(erase(fileName, '_cleanSignal'), '-', ...
+                noiseType, '-', string(sectionNumber), '.h5'));
 
-            % Upload noisy signal to Google Drive
-            uploadToDrive(outputFilename, accessToken, UPLOAD_URL, BOUNDARY);
+            metadataJson = jsonencode(metadata);
+
+            % Create the multipart body
+            body = sprintf([...
+                '--%s\n' ...
+                'Content-Type: application/json; charset=UTF-8\n\n' ...
+                '%s\n' ...
+                '--%s\n' ...
+                'Content-Type: application/octet-stream\n\n' ...
+                '%s\n' ...
+                '--%s--\n'], ...
+                BOUNDARY, metadataJson, BOUNDARY, noisyEcg, BOUNDARY);
+
+
+
+            % Save the signal in h5 format.
+            save(outputFilename, 'noisyEcg');
         end
     end
 end
 
-end
-
-% Function to save data in HDF5 format
-function saveHDF5(filename, data)
-    h5create(filename, '/data', size(data));
-    h5write(filename, '/data', data);
-end
-
-% Function to upload file to Google Drive
-function uploadToDrive(filePath, accessToken, UPLOAD_URL, BOUNDARY)
-    % Read the file content
-    fileContent = fileread(filePath);
-
-    % Extract the filename
-    [~, fileName, ext] = fileparts(filePath);
-    fileName = strcat(fileName, ext);
-
-    % Create metadata part for google drive upload.
-    metadata = struct('name', fileName);
-    metadataJson = jsonencode(metadata);
-
-    % Create the multipart body
-    body = sprintf([...
-        '--%s\n' ...
-        'Content-Type: application/json; charset=UTF-8\n\n' ...
-        '%s\n' ...
-        '--%s\n' ...
-        'Content-Type: application/octet-stream\n\n' ...
-        '%s\n' ...
-        '--%s--\n'], ...
-        BOUNDARY, metadataJson, BOUNDARY, fileContent, BOUNDARY);
-
-    % Set HTTP headers
-    headers = [...
-        matlab.net.http.HeaderField('Authorization', ['Bearer ' accessToken]), ...
-        matlab.net.http.HeaderField('Content-Type', ['multipart/related; boundary="' BOUNDARY '"'])];
-
-    % Create HTTP request
-    request = matlab.net.http.RequestMessage('post', headers, matlab.net.http.MessageBody(body));
-
-    % Send HTTP request
-    response = request.send(UPLOAD_URL);
-
-    % Display response
-    disp(response.Body.Data);
 end
 
 function access_token = loadGoogleDrive(pathToToken)
