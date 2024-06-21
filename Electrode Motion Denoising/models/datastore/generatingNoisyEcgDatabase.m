@@ -27,24 +27,22 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 %% Set constants
 QRS_SEARCH_WINDOW = 0.05; % [s]
 ECG_LENGTH_SECONDS = 30;
-PATH_TO_TOKEN = "C:\B-Secur\MSc Project\" + ...
-    "ElectrodeMotionionDenoisingFramework\" + ...
-    "Electrode Motion Denoising\models\datastore\" + ...
-    "utils\client_secret_327364716932-" + ...
-    "78oacfgib4ilrotdphikdpbkvfnlk76c.apps." + ...
-    "googleusercontent.com.json";
+
+% Read the path to the client secret from environment variable
+PATH_TO_TOKEN = "C:\B-Secur\temp\secret\" + ...
+    "client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c." + ...
+    "apps.googleusercontent.com.json";
 
 % Get the information from the noise signals folder.
-noiseSignalDirInfo = dir(fullfile(noiseSignalPath, '*mat'));
-ecgSignalDirInfo = dir(fullfile(ecgSignalPath, '*mat'));
+noiseSignalDirInfo = dir(fullfile(noiseSignalPath, '*.mat'));
+ecgSignalDirInfo = dir(fullfile(ecgSignalPath, '*.mat'));
 
 % Read stored noise signals from mat file.
 initialNoiseData = load(fullfile(noiseSignalPath, noiseSignalDirInfo.name));
 
 % Calculate the minimum and maximum length of ecg signals which will be
 % used for noise generation.
-acceptableEcgLength500 = ECG_LENGTH_SECONDS;
-acceptableEcgLength500 = acceptableEcgLength500 .* ecgFs;
+acceptableEcgLength500 = ECG_LENGTH_SECONDS * ecgFs;
 
 lengthOfNoiseSignal = numel(initialNoiseData.emNoise);
 
@@ -68,25 +66,22 @@ for iNoiseSection = 1 : maxNosieSections
     initialGenerateNoise.("EM_Noise"){iNoiseSection, 1} = noiseSignalModeling(...
         thisNoiseSection, ...
         numberOfGeneratedNoisySignals);
-
-
 end
 
 % Set the path of result folder to store the data.
 resultDataFolder = fullfile(erase(ecgSignalPath, 'cleanSignals'), 'trainingDataSet');
 
-if ~isfolder(resultDataFolder) mkdir(resultDataFolder); end % Make directory.
+if ~isfolder(resultDataFolder); mkdir(resultDataFolder); end % Make directory.
 
-% Filter of meta data 
+% Filter out meta data 
 filterFlag = string({ecgSignalDirInfo.name}) == "AngleData.mat" | ...
     string({ecgSignalDirInfo.name}) == "widthData.mat" | ...
     string({ecgSignalDirInfo.name}) == "zData.mat";
 
-
 ecgSignalDirInfo(filterFlag) = [];
 
-% Numer of valid ecg files.
-nEcgFiles = height(ecgSignalDirInfo);
+% Number of valid ecg files.
+nEcgFiles = numel(ecgSignalDirInfo);
 
 % Get the length of SNR vector.
 nSNR = numel(SNR);
@@ -108,7 +103,7 @@ for iEcgFile = 1 : nEcgFiles - 3
     rawEcgSignal = rawEcgSignal(1 : acceptableEcgLength500);
 
     % Initial data table. One table will be generated for each valid
-    % file and stored in a seperate file in result folder.
+    % file and stored in a separate file in result folder.
     [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSections);
 
     % Make sure the ecg signal is in column orientation and store the
@@ -132,7 +127,7 @@ for iEcgFile = 1 : nEcgFiles - 3
     % calculate the qrs amplitude.
     qrsSearchWindow = round(QRS_SEARCH_WINDOW * ecgFs);
 
-    % Per-allocate memory.
+    % Pre-allocate memory.
     nQrsLocations = numel(qrsLocations);
     qrsPeakToPeak = nan(nQrsLocations, 1);
 
@@ -300,7 +295,7 @@ cleanSignalPath = fullfile(outputFolderClean, fileName + '.h5');
 saveHDF5(cleanSignalPath, cleanSignal);
 
 % Upload clean signal to Google Drive
-uploadToDrive(cleanSignalPath, accessToken, UPLOAD_URL, BOUNDARY);
+uploadToDrive(cleanSignalPath, accessToken, UPLOAD_URL, BOUNDARY, getFolderId('cleanSignals', accessToken));
 
 % Now we need to loop through the noisy signals.
 for iSection = 1 : height(DataTable)
@@ -348,7 +343,7 @@ for iSection = 1 : height(DataTable)
             saveHDF5(outputFilename, noisyEcg);
 
             % Upload noisy signal to Google Drive
-            uploadToDrive(outputFilename, accessToken, UPLOAD_URL, BOUNDARY);
+            uploadToDrive(outputFilename, accessToken, UPLOAD_URL, BOUNDARY, getFolderId(['noisySignals/' SNRValue], accessToken));
         end
     end
 end
@@ -357,12 +352,18 @@ end
 
 % Function to save data in HDF5 format
 function saveHDF5(filename, data)
+    % Check if the file already exists and delete it
+    if isfile(filename)
+        delete(filename);
+    end
+
+    % Create the HDF5 file and dataset
     h5create(filename, '/data', size(data));
     h5write(filename, '/data', data);
 end
 
 % Function to upload file to Google Drive
-function uploadToDrive(filePath, accessToken, UPLOAD_URL, BOUNDARY)
+function uploadToDrive(filePath, accessToken, UPLOAD_URL, BOUNDARY, parentFolder)
     % Read the file content
     fileContent = fileread(filePath);
 
@@ -371,7 +372,7 @@ function uploadToDrive(filePath, accessToken, UPLOAD_URL, BOUNDARY)
     fileName = strcat(fileName, ext);
 
     % Create metadata part for google drive upload.
-    metadata = struct('name', fileName);
+    metadata = struct('name', fileName, 'parents', {parentFolder});
     metadataJson = jsonencode(metadata);
 
     % Create the multipart body
@@ -398,6 +399,72 @@ function uploadToDrive(filePath, accessToken, UPLOAD_URL, BOUNDARY)
 
     % Display response
     disp(response.Body.Data);
+
+    % Check for errors in the response
+    if isfield(response.Body.Data, 'error')
+        error('Google Drive API error: %s', response.Body.Data.error.message);
+    end
+end
+
+function folderId = getFolderId(folderPath, accessToken)
+% Get the folder ID for a given folder path, creating folders if necessary
+
+% Define the base URL for Google Drive API
+driveApiUrl = 'https://www.googleapis.com/drive/v3/files';
+
+% Ensure folderPath is a string scalar
+folderPath = convertCharsToStrings(folderPath);
+
+% Split the folder path into individual folder names
+folderParts = strsplit(folderPath, '/');
+
+% Initialize the parent ID (root folder)
+parentId = 'root';
+
+% Loop through each part of the folder path
+for i = 1:numel(folderParts)
+    % Search for the current folder in the parent folder
+    searchUrl = [driveApiUrl, '?q=', ...
+        'name = "', folderParts{i}, '" and ', ...
+        '"', parentId, '" in parents and ', ...
+        'mimeType = "application/vnd.google-apps.folder" and ', ...
+        'trashed = false', ...
+        '&fields=files(id)&spaces=drive'];
+
+    % Set the HTTP options
+    options = weboptions('HeaderFields', {'Authorization', ['Bearer ' accessToken]});
+
+    % Send the search request
+    response = webread(searchUrl, options);
+
+    % Check if the folder exists
+    if isempty(response.files)
+        % If the folder does not exist, create it
+        createUrl = driveApiUrl;
+        createBody = jsonencode(struct(...
+            'name', folderParts{i}, ...
+            'mimeType', 'application/vnd.google-apps.folder', ...
+            'parents', {parentId}));
+
+        % Set the HTTP headers for the create request
+        headers = [...
+            matlab.net.http.HeaderField('Authorization', ['Bearer ' accessToken]), ...
+            matlab.net.http.HeaderField('Content-Type', 'application/json')];
+
+        % Send the create request
+        request = matlab.net.http.RequestMessage('POST', headers, matlab.net.http.MessageBody(createBody));
+        response = request.send(createUrl);
+
+        % Get the ID of the newly created folder
+        parentId = response.Body.Data.id;
+    else
+        % If the folder exists, get its ID
+        parentId = response.files(1).id;
+    end
+end
+
+% Return the final folder ID
+folderId = parentId;
 end
 
 function access_token = loadGoogleDrive(pathToToken)
