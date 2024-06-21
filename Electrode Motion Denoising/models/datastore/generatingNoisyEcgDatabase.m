@@ -1,12 +1,12 @@
 function generatingNoisyEcgDatabase(noiseSignalPath, ...
     ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
-    numberOfGeneratedNoisySignals)
+    numberOfGeneratedNoisySignals, googleDriveFolderIDClean, googleDriveFolderIDNoisy)
 % generatingNoisyEcgDatabase - Models new noise sections, then corrupts the
 % clean ECG's with pre-defined SNR levels of electrode motion noise.
 %
 % Syntax: generatingNoisyEcgDatabase(noiseSignalPath, ...
 %    ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
-%    numberOfGeneratedNoisySignals)
+%    numberOfGeneratedNoisySignals, googleDriveFolderIDClean, googleDriveFolderIDNoisy)
 %
 % Inputs:
 %    noiseSignalPath - Directory to real noise .mat file.
@@ -16,11 +16,13 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 %    SNR - Array containing the required signal to noise ratios.
 %    numberOfGeneratedNoisySignals - The number of noisy signals to
 %    generate from each clean ECG signal.
+%    googleDriveFolderIDClean - Google Drive Folder ID to save the clean files.
+%    googleDriveFolderIDNoisy - Google Drive Folder ID to save the noisy files.
 %
 % Outputs: none.
 %
 % Other m-files required: noiseSignalModeling.m.
-% Subfunctions: computeRmsNoiseAmp, generateInitialTable.
+% Subfunctions: computeRmsNoiseAmp, generateInitialTable, uploadToGoogleDrive.
 % MAT-files required: none.
 %
 %------------- BEGIN CODE --------------
@@ -193,7 +195,7 @@ for iEcgFile = 1 : nEcgFiles - 3
 
     % Call function to convert and save each signal to a readable format for
     % Deep learning models.
-    convertToHDF5Format(DataTable, resultDataFolder);
+    convertToHDF5Format(DataTable, resultDataFolder, googleDriveFolderIDClean, googleDriveFolderIDNoisy);
 
 end
 
@@ -264,20 +266,12 @@ DataTable.FileName(:, :) = "";
 
 end
 
-% Function to recursively save data from MATLAB to H5
-function convertToHDF5Format(DataTable, resultDataFolder)
+% Function to recursively save data from MATLAB to H5 and upload to Google Drive
+function convertToHDF5Format(DataTable, resultDataFolder, googleDriveFolderIDClean, googleDriveFolderIDNoisy)
 % Save all signals to a more readable format
 
 % Constants.
 NUM_OF_SNR = 5;
-
-% Assign output folders for clean and noisy signals.
-outputFolderClean = fullfile(resultDataFolder, "cleanSignals");
-outputFolderNoisy = fullfile(resultDataFolder, "noisySignals");
-
-% Create folders if they dont exist.
-if ~isfolder(outputFolderNoisy) mkdir(outputFolderNoisy); end
-if ~isfolder(outputFolderClean) mkdir(outputFolderClean); end
 
 % Extract the filename.
 fileName = table2array(DataTable(1, 1));
@@ -285,8 +279,15 @@ fileName = table2array(DataTable(1, 1));
 % Extract the clean signal.
 cleanSignal = DataTable.ecgSignal{1, 1};
 
-% Save the clean signal in H5 format.
-save(fullfile(outputFolderClean, fileName + '.h5'), 'cleanSignal');
+% Save the clean signal locally in H5 format.
+cleanFilePath = fullfile(resultDataFolder, "cleanSignals", fileName + '.h5');
+if ~isfolder(fullfile(resultDataFolder, "cleanSignals"))
+    mkdir(fullfile(resultDataFolder, "cleanSignals"));
+end
+save(cleanFilePath, 'cleanSignal');
+
+% Upload the clean signal to Google Drive
+uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
 
 % Now we need to loop through the noisy signals.
 for iSection = 1 : height(DataTable)
@@ -297,7 +298,7 @@ for iSection = 1 : height(DataTable)
     % Loop through each SNR value.
     for iSNR = 1 : NUM_OF_SNR
 
-        % Index into correspinding SNR column
+        % Index into corresponding SNR column
         SNRValue = string(DataTable.Properties.VariableNames(:, iSNR + 3));
 
         % Extract the Data (nested in structs)
@@ -320,10 +321,9 @@ for iSection = 1 : height(DataTable)
             noisyEcg = cell2mat(sectionNoise(iCopy));
 
             % Create sub directories for each SNR.
-            outputFolderNoisySub = fullfile(outputFolderNoisy, SNRValue);
-
-            % Make directory
-            if ~isfolder(outputFolderNoisySub) mkdir(outputFolderNoisySub); ...
+            outputFolderNoisySub = fullfile(resultDataFolder, "noisySignals", SNRValue);
+            if ~isfolder(outputFolderNoisySub)
+                mkdir(outputFolderNoisySub);
             end
 
             % Let's create a filename based on the type of signal.
@@ -331,12 +331,47 @@ for iSection = 1 : height(DataTable)
                 strcat(erase(fileName, '_cleanSignal'), '-', ...
                 noiseType, '-', string(sectionNumber), '.h5'));
 
-            % Save the signal in h5 format.
+            % Save the noisy signal locally in h5 format.
             save(outputFilename, 'noisyEcg');
+
+            % Upload the noisy signal to Google Drive
+            uploadToGoogleDrive(outputFilename, googleDriveFolderIDNoisy);
         end
     end
 end
 
 end
 
-%------------- END OF CODE -------------
+function uploadToGoogleDrive(filePath, folderID)
+% uploadToGoogleDrive - Uploads a file to a specified Google Drive folder.
+%
+% Syntax: uploadToGoogleDrive(filePath, folderID)
+%
+% Inputs:
+%    filePath - Local path to the file.
+%    folderID - Google Drive Folder ID where the file should be uploaded.
+%
+% Outputs: none.
+%
+%------------- BEGIN CODE --------------
+    % Initialize Google Drive API client (Assuming you've set up the client)
+
+    % Load the credentials (You need to obtain OAuth 2.0 credentials)
+    credentials = load('path_to_credentials.json'); % Adjust this path
+
+    % Create a Google Drive API client
+    driveClient = googleDriveClient(credentials);
+
+    % Get file information
+    [~, fileName, ext] = fileparts(filePath);
+    fileName = strcat(fileName, ext);
+
+    % Upload the file
+    fileID = driveClient.uploadFile(filePath, folderID, fileName);
+
+    % Display the uploaded file ID
+    fprintf('Uploaded file ID: %s\n', fileID);
+
+end
+
+%------------- END OF CODE --------------
