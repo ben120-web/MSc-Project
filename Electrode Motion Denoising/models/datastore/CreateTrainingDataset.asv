@@ -26,8 +26,10 @@ extractAndPreProcessNoiseSignal(); % These get saved in datastore/noiseSignal
 createSyntheticCleanEcgSignals();
 
 % Define inputs.
-noiseSignalPath = fullfile(erase(mfilename('fullpath'), mfilename), "noiseSignal");
-ecgSignalPath = fullfile(erase(mfilename('fullpath'), mfilename), "cleanSignals"); % Create a database of clean ECG // Ensure 500Hz. Keep in .mat format.
+noiseSignalPath = fullfile(erase(mfilename('fullpath'),...
+    mfilename), "noiseSignal");
+ecgSignalPath = fullfile(erase(mfilename('fullpath'),...
+    mfilename), "cleanSignals"); % Create a database of clean ECG // Ensure 500Hz. Keep in .mat format.
 
 % Define input parameters.
 maxNosieSections = 10; % Can vary this.
@@ -40,14 +42,15 @@ googleDriveFolderIDNoisy = createGoogleDriveFolder('noisySignals', '');
 
 % Create subdirectories for SNR levels
 snrFolderIDs = struct();
-
-for i = 1 : length(SNR)
+for i = 1:length(SNR)
     folderName = ['SNR', num2str(SNR(i))];
     snrFolderIDs.(folderName) = createGoogleDriveFolder(folderName, googleDriveFolderIDNoisy);
 end
 
 % Generate noisy database and upload to Google Drive
-generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, 500, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs);
+generatingNoisyEcgDatabase(noiseSignalPath, ...
+    ecgSignalPath, 500, maxNosieSections, SNR, ...
+    numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs)
 
 end
 
@@ -64,27 +67,11 @@ function folderID = createGoogleDriveFolder(folderName, parentFolderID)
 %    folderID - ID of the created folder.
 
 %------------- BEGIN CODE --------------
-    % Read OAuth 2.0 credentials from JSON file
-    credentialsFile = '/Users/benrussell/Frameworks/Google-Drive/client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c.apps.googleusercontent.com.json'; % Update this path
-
-    if ~isfile(credentialsFile)
-        error('Credentials file not found: %s', credentialsFile);
-    end
-    
-    fid = fopen(credentialsFile, 'r');
-    if fid == -1
-        error('Cannot open credentials file: %s', credentialsFile);
-    end
-    
-    raw = fread(fid, inf);
-    str = char(raw');
-    fclose(fid);
-    
-    credentials = jsondecode(str);
+    % Load OAuth 2.0 credentials
+    credentials = loadjson('credentials.json');
 
     % Authenticate and get access token
-    refreshToken = getRefreshToken();
-    accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken);
+    accessToken = getGoogleAccessToken(credentials);
 
     % Define the metadata for the folder
     metadata = struct( ...
@@ -100,10 +87,9 @@ function folderID = createGoogleDriveFolder(folderName, parentFolderID)
 
     % Define HTTP header with authorization and content type
     options = weboptions('HeaderFields', { ...
-        'Authorization', ['Bearer ', accessToken]; ...
+        'Authorization', ['Bearer ', accessToken], ...
         'Content-Type', 'application/json'}, ...
         'MediaType', 'application/json');
-
 
     % Define Google Drive API endpoint for creating a folder
     apiEndpoint = 'https://www.googleapis.com/drive/v3/files';
@@ -118,53 +104,3 @@ function folderID = createGoogleDriveFolder(folderName, parentFolderID)
     fprintf('Created folder ID: %s\n', folderID);
 
 end
-
-function accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken)
-    % getAccessTokenUsingRefreshToken - Get access token using refresh token
-    %
-    % Syntax: accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken)
-    %
-    % Inputs:
-    %    credentials - OAuth 2.0 credentials loaded from JSON file.
-    %    refreshToken - Refresh token obtained from manual authorization.
-    %
-    % Outputs:
-    %    accessToken - Access token for Google Drive API.
-
-    % Define OAuth 2.0 token endpoint and client details
-    tokenEndpoint = 'https://oauth2.googleapis.com/token';
-    clientID = credentials.installed.client_id;
-    clientSecret = credentials.installed.client_secret;
-
-    % Exchange refresh token for access token
-    data = struct('client_id', clientID, 'client_secret', clientSecret, ...
-                  'refresh_token', refreshToken, 'grant_type', 'refresh_token');
-
-    % Perform the web request using matlab.net.http package
-    import matlab.net.http.*
-    import matlab.net.http.field.*
-    import matlab.net.http.io.*
-
-    % Convert struct to application/x-www-form-urlencoded format
-    fields = fieldnames(data);
-    bodyContent = [];
-    for i = 1:numel(fields)
-        bodyContent = [bodyContent, fields{i}, '=', urlencode(data.(fields{i})), '&'];
-    end
-    bodyContent(end) = []; % Remove trailing ampersand
-
-    header = [ContentTypeField('application/x-www-form-urlencoded')];
-    requestBody = FormProvider(bodyContent);
-
-    request = RequestMessage('POST', header, requestBody);
-    response = send(request, matlab.net.URI(tokenEndpoint));
-
-    if response.StatusCode == 200
-        accessToken = response.Body.Data.access_token;
-    else
-        error('Failed to get the access token: %s', char(response.Body.Data));
-    end
-end
-
-
-
