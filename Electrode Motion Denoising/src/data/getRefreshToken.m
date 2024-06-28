@@ -1,6 +1,14 @@
-function accessToken = getRefreshToken()
-    % Load the OAuth 2.0 credentials
+function refreshToken = getRefreshToken()
+    % getRefreshToken - Guide the user to get a refresh token manually
+    %
+    % Syntax: refreshToken = getRefreshToken()
+    %
+    % Outputs:
+    %    refreshToken - Refresh token for Google Drive API.
+
+    % Read OAuth 2.0 credentials from JSON file
     credentialsFile = '/Users/benrussell/Frameworks/Google-Drive/client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c.apps.googleusercontent.com.json'; % Update this path
+
     if ~isfile(credentialsFile)
         error('Credentials file not found: %s', credentialsFile);
     end
@@ -9,28 +17,29 @@ function accessToken = getRefreshToken()
     raw = fread(fid, inf);
     str = char(raw');
     fclose(fid);
+    
     credentials = jsondecode(str);
 
+    % Define OAuth 2.0 token endpoint and client details
     clientID = credentials.installed.client_id;
     clientSecret = credentials.installed.client_secret;
-    redirectURI = 'urn:ietf:wg:oauth:2.0:oob';
+    redirectURI = 'urn:ietf:wg:oauth:2.0:oob';  % Updated redirect URI for manual handling
 
-    % Construct the authorization URL
+    % Generate authorization URL
     authURL = ['https://accounts.google.com/o/oauth2/auth?response_type=code&client_id=', clientID, ...
-               '&redirect_uri=', redirectURI, '&scope=https://www.googleapis.com/auth/drive&access_type=offline'];
-    fprintf('Opening the following URL in your browser to authorize the application:\n%s\n', authURL);
-    
-    % Open the authorization URL in the default web browser
+               '&redirect_uri=', redirectURI, '&scope=https://www.googleapis.com/auth/drive'];
+
+    % Display the authorization URL and open it in the default web browser
+    fprintf('Open the following URL in your browser to authorize the application:\n%s\n', authURL);
     web(authURL, '-browser');
-    
-    % Prompt the user to enter the authorization code
+
+    % Prompt user to enter the authorization code
     authCode = input('Enter the authorization code: ', 's');
 
     % Exchange authorization code for refresh token
-    tokenEndpoint = 'https://oauth2.googleapis.com/token';
     data = struct('code', authCode, 'client_id', clientID, 'client_secret', clientSecret, ...
                   'redirect_uri', redirectURI, 'grant_type', 'authorization_code');
-    
+
     % Perform the web request using matlab.net.http package
     import matlab.net.http.*
     import matlab.net.http.field.*
@@ -48,31 +57,15 @@ function accessToken = getRefreshToken()
     requestBody = FormProvider(bodyContent);
 
     request = RequestMessage('POST', header, requestBody);
-    response = send(request, matlab.net.URI(tokenEndpoint));
+    response = send(request, matlab.net.URI('https://oauth2.googleapis.com/token'));
 
     if response.StatusCode == 200
-        refreshToken = response.Body.Data.refresh_token;
-        accessToken = response.Body.Data.access_token;
+        tokenResponse = response.Body.Data;
+        refreshToken = tokenResponse.refresh_token;
 
-        % Display the refresh token
-        fprintf('Refresh Token: %s\n', refreshToken);
-        
-        % Save the refresh token to a file for future use
-        fid = fopen('refresh_token.txt', 'w');
-        fprintf(fid, '%s', refreshToken);
-        fclose(fid);
-
-        % Save the access token to a file for immediate use
-        fprintf('Access Token: %s\n', accessToken);
-        fid = fopen('access_token.txt', 'w');
-        fprintf(fid, '%s', accessToken);
-        fclose(fid);
+        % Save the refresh token to a file
+        save('refresh_token.mat', 'refreshToken');
     else
         error('Failed to get the refresh token: %s', char(response.Body.Data));
     end
-end
-
-function encoded = urlencode(str)
-    % URL-encode a string
-    encoded = char(java.net.URLEncoder.encode(str, 'UTF-8'));
 end
