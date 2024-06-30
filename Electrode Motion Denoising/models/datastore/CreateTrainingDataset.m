@@ -319,7 +319,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
     nSNR = numel(SNR);
 
     % Process each valid ecg file.
-    for iEcgFile = 1:nEcgFiles
+    for iEcgFile = 1 : nEcgFiles
 
         ecgSignalFileName = fullfile(ecgSignalPath, ...
             ecgSignalDirInfo(iEcgFile).name);
@@ -480,7 +480,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
             sectionNoise = SNRData(iSection).em;
 
             % Loop through each copy (From AR-Modelling)
-            for iCopy = 1:numel(sectionNoise)
+            for iCopy = 1 : numel(sectionNoise)
 
                 % Specify the noise type.
                 if iCopy == 1
@@ -655,7 +655,7 @@ function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSecti
 
     nInitialVariableNames = numel(variableNames);
 
-    for i = 2:nSNR
+    for i = 2 : nSNR
         variableNames{1, i + nInitialVariableNames - 1} = ['SNR', num2str(SNR(i))];
     end
 

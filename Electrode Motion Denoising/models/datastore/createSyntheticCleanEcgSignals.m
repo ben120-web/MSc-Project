@@ -28,7 +28,7 @@ MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 MAX_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 
 % Number of different sigals to generate.
-numOfCleanSignals = 2;
+numOfCleanSignals = 10;
 
 % Employ Latin Hyper Cube sampling to generate all possible combinations of
 % parameter values.
@@ -109,6 +109,7 @@ end
 end
 
 function [X_scaled, X_normalized] = latinHyperCubeSampling(n, min_ranges_p, max_ranges_p)
+% Perform Latin Hypercube sampling.
     p = length(min_ranges_p);
     [M, N] = size(min_ranges_p);
     if M < N
