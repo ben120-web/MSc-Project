@@ -170,7 +170,7 @@ function accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken
     % Convert struct to application/x-www-form-urlencoded format
     fields = fieldnames(data);
     bodyContent = [];
-    for i = 1:numel(fields)
+    for i = 1 : numel(fields)
         bodyContent = [bodyContent, fields{i}, '=', urlencode(data.(fields{i})), '&'];
     end
     bodyContent(end) = []; % Remove trailing ampersand
@@ -290,7 +290,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
     % Generate all the noise signals for each section of data. These signals
     % are not scaled with respect to SNR right now.
-    for iNoiseSection = 1:maxNosieSections
+    for iNoiseSection = 1 : maxNosieSections
 
         noiseSectionEnd = noiseSectionStart(iNoiseSection) + ...
             acceptableEcgLength500 - 1;
@@ -384,7 +384,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
         % Now using the qrs peak to peak power all the noises in each
         % section will be scaled for every SNR level.
-        for kSNR = 1:nSNR
+        for kSNR = 1 : nSNR
 
             thisNoise = initialGenerateNoise.("EM_Noise");
 
@@ -458,12 +458,6 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
     h5create(cleanFilePath, '/ecgSignal', size(cleanSignal));
     h5write(cleanFilePath, '/ecgSignal', cleanSignal);
 
-    newFP = extractAfter(cleanFilePath, '/T', )
-
-    % Write to a local folder too for now.
-    h5create('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', size(cleanSignal));
-    h5write('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', cleanSignal);
-
     % Upload the clean signal to Google Drive
     uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
 
@@ -518,10 +512,6 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
                 h5create(outputFilename, '/ecgSignal', size(noisyEcg));
                 h5write(outputFilename, '/ecgSignal', noisyEcg);
 
-                % Save the noisy signal locally in h5 format.
-                h5create('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', size(noisyEcg));
-                h5write(outputFilename, '/ecgSignal', noisyEcg)
-
                 % Upload the noisy signal to Google Drive
                 uploadToGoogleDrive(outputFilename, snrFolderIDs.(SNRValue));
             end
@@ -529,7 +519,6 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
     end
 
 end
-
 
 function uploadToGoogleDrive(filePath, folderID)
     % uploadToGoogleDrive - Uploads a file to a specified Google Drive folder.
@@ -544,7 +533,7 @@ function uploadToGoogleDrive(filePath, folderID)
 
     %------------- BEGIN CODE --------------
     % Read OAuth 2.0 credentials from JSON file
-    credentialsFile = '/Users/benrussell/Frameworks/Google-Drive/client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c.apps.googleusercontent.com.json'; % Update this path
+    credentialsFile = '/Users/benrussell/Frameworks/Google-Drive/client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c.apps.googleusercontent.com.json';
 
     if ~isfile(credentialsFile)
         error('Credentials file not found: %s', credentialsFile);
@@ -565,6 +554,7 @@ function uploadToGoogleDrive(filePath, folderID)
     if fid == -1
         error('Cannot open file: %s', filePath);
     end
+    
     fileContent = fread(fid, '*uint8');
     fclose(fid);
 
@@ -582,7 +572,9 @@ function uploadToGoogleDrive(filePath, folderID)
     % Create a multipart/form-data body for the HTTP request
     boundary = '-------314159265358979323846';
     CRLF = [char(13) char(10)];
-    body = [ ...
+
+    % Construct the multipart body
+    body = [
         '--' boundary CRLF ...
         'Content-Type: application/json; charset=UTF-8' CRLF CRLF ...
         metadataJson CRLF ...
@@ -599,11 +591,14 @@ function uploadToGoogleDrive(filePath, folderID)
     % Define Google Drive API endpoint for uploading a file
     apiEndpoint = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
 
-    % Upload the file
-    request = matlab.net.http.RequestMessage('POST', headerFields, body);
+    % Create a request message
+    request = matlab.net.http.RequestMessage('POST', headerFields, matlab.net.http.MessageBody(body));
+
+    % Send the request
     response = request.send(matlab.net.URI(apiEndpoint));
 
-    if response.StatusCode == 200 || response.StatusCode == 201
+    % Check the response status
+    if response.StatusCode == matlab.net.http.StatusCode.OK || response.StatusCode == matlab.net.http.StatusCode.Created
         fileResponse = response.Body.Data;
         fileID = fileResponse.id;
         % Display the uploaded file ID
@@ -615,6 +610,7 @@ function uploadToGoogleDrive(filePath, folderID)
         error('Failed to upload file: %s', char(response.Body.Data));
     end
 end
+
 
 function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
     % Computes the Root-Mean-Squared amplitude of a signal by measuring the RMS
@@ -630,7 +626,7 @@ function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
     % Calculate RMS value for each second.
     rmsVals = nan(nSignalSeconds, 1);
 
-    for iSec = 1:nSignalSeconds
+    for iSec = 1 : nSignalSeconds
 
         % Get indexes for start and end of section.
         thisSectionStart = (iSec - 1) * SIGNAL_FS + 1;
