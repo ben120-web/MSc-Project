@@ -170,7 +170,7 @@ function accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken
     % Convert struct to application/x-www-form-urlencoded format
     fields = fieldnames(data);
     bodyContent = [];
-    for i = 1 : numel(fields)
+    for i = 1:numel(fields)
         bodyContent = [bodyContent, fields{i}, '=', urlencode(data.(fields{i})), '&'];
     end
     bodyContent(end) = []; % Remove trailing ampersand
@@ -290,7 +290,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
     % Generate all the noise signals for each section of data. These signals
     % are not scaled with respect to SNR right now.
-    for iNoiseSection = 1 : maxNosieSections
+    for iNoiseSection = 1:maxNosieSections
 
         noiseSectionEnd = noiseSectionStart(iNoiseSection) + ...
             acceptableEcgLength500 - 1;
@@ -384,7 +384,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
         % Now using the qrs peak to peak power all the noises in each
         % section will be scaled for every SNR level.
-        for kSNR = 1 : nSNR
+        for kSNR = 1:nSNR
 
             thisNoise = initialGenerateNoise.("EM_Noise");
 
@@ -458,6 +458,12 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
     h5create(cleanFilePath, '/ecgSignal', size(cleanSignal));
     h5write(cleanFilePath, '/ecgSignal', cleanSignal);
 
+    newFP = extractAfter(cleanFilePath, '/T', )
+
+    % Write to a local folder too for now.
+    h5create('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', size(cleanSignal));
+    h5write('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', cleanSignal);
+
     % Upload the clean signal to Google Drive
     uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
 
@@ -511,6 +517,10 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
                 % Save the noisy signal locally in h5 format.
                 h5create(outputFilename, '/ecgSignal', size(noisyEcg));
                 h5write(outputFilename, '/ecgSignal', noisyEcg);
+
+                % Save the noisy signal locally in h5 format.
+                h5create('/Users/benrussell/Frameworks/MSC_Project_Database', '/ecgSignal', size(noisyEcg));
+                h5write(outputFilename, '/ecgSignal', noisyEcg)
 
                 % Upload the noisy signal to Google Drive
                 uploadToGoogleDrive(outputFilename, snrFolderIDs.(SNRValue));
