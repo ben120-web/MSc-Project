@@ -46,16 +46,36 @@ function CreateTrainingDataset(saveOption)
         snrFolderIDs = struct();
 
         for i = 1 : length(SNR)
-            folderName = ['SNR', num2str(SNR(i))];
+            folderName = ['SNR', num2str(SNR(i))];    
             snrFolderIDs.(folderName) = createGoogleDriveFolder(folderName, googleDriveFolderIDNoisy);
         end
     else
         googleDriveFolderIDClean = '';
         snrFolderIDs = struct();
+        ensureLocalDirectories(localSavePath, SNR);
     end
 
     % Generate noisy database and upload to Google Drive or save locally
     generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, 500, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath);
+end
+
+function ensureLocalDirectories(localSavePath, SNR)
+    % Create the required directories for local saving
+    if ~isfolder(fullfile(localSavePath, 'cleanSignals'))
+        mkdir(fullfile(localSavePath, 'cleanSignals'));
+    end
+
+    noisyPath = fullfile(localSavePath, 'noisySignals');
+    if ~isfolder(noisyPath)
+        mkdir(noisyPath);
+    end
+
+    for i = 1:length(SNR)
+        snrPath = fullfile(noisyPath, ['SNR', num2str(SNR(i))]);
+        if ~isfolder(snrPath)
+            mkdir(snrPath);
+        end
+    end
 end
 
 function generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, ecgFs, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath)
@@ -248,6 +268,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
             mkdir(localCleanPath);
         end
         movefile(cleanFilePath, fullfile(localCleanPath, strcat(fileName, '.h5')));
+        fprintf('Saved clean signal locally: %s\n', fullfile(localCleanPath, strcat(fileName, '.h5')));
     end
 
     % Now we need to loop through the noisy signals.
@@ -256,7 +277,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
         sectionNumber = iSection;
 
         % Loop through each SNR value.
-        for iSNR = 1:NUM_OF_SNR
+        for iSNR = 1 : NUM_OF_SNR
             % Index into corresponding SNR column
             SNRValue = ['SNR', num2str((iSNR-1) * 6)];
 
@@ -306,6 +327,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
                         mkdir(localNoisyPath);
                     end
                     movefile(outputFilename, fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
+                    fprintf('Saved noisy signal locally: %s\n', fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
                 end
             end
         end

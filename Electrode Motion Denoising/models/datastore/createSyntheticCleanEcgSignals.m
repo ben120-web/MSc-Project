@@ -17,7 +17,7 @@ function createSyntheticCleanEcgSignals()
 %------------- BEGIN CODE --------------
 
 % Define paraters
-samplingFrequency = 5; % Always work at 500Hz.
+samplingFrequency = 20; % Always work at 500Hz.
 
 HR_TO_GENERATE = [50, 60, 70, 80, 90, 100];
 MIN_ANGLES_OF_EXTREMA = [-60 -12 0 12 80];
