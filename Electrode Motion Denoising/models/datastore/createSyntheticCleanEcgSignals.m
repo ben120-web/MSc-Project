@@ -17,7 +17,7 @@ function createSyntheticCleanEcgSignals()
 %------------- BEGIN CODE --------------
 
 % Define paraters
-samplingFrequency = 20; % Always work at 500Hz.
+samplingFrequency = 500; % Always work at 500Hz.
 
 HR_TO_GENERATE = [50, 60, 70, 80, 90, 100];
 MIN_ANGLES_OF_EXTREMA = [-60 -12 0 12 80];
@@ -28,7 +28,7 @@ MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 MAX_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 
 % Number of different sigals to generate.
-numOfCleanSignals = 50;
+numOfCleanSignals = 100;
 
 % Employ Latin Hyper Cube sampling to generate all possible combinations of
 % parameter values.

@@ -18,7 +18,7 @@ function CreateTrainingDataset(saveOption)
     % various amounts of electrode motion noise.
 
     % Default folder paths
-    localSavePath = '/Users/benrussell/Frameworks/MSC_Project_Database';
+    localSavePath = 'H:\Technology\Clinical\02-databases\01-rearranged-testing-databases\BR_Temp';
 
     %% Main processing
 
@@ -474,3 +474,4 @@ function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSecti
     DataTable.SectionNum(1:end, 1) = 1:maxNosieSections;
     DataTable.FileName(:, :) = "";
 end
+%% --------------------------- END OF CODE -------------------------------
