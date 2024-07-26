@@ -1,4 +1,4 @@
-function CreateTrainingDataset()
+function CreateTrainingDataset(saveOption)
     % Script CreateTrainingDataset.m will generate the dataset used for
     % training Machine / Deep Learning algorithms. It will create a dataset
     % with clean reference signals, as well as a range of signals corrupt with
@@ -15,7 +15,10 @@ function CreateTrainingDataset()
     % signals with a range of morphologies.
     %
     % Step 3: generateNoisyDatabase - Corrupts the clean ECG signals with
-    % various amounts of electrode motion noise. 
+    % various amounts of electrode motion noise.
+
+    % Default folder paths
+    localSavePath = '/Users/benrussell/Frameworks/MSC_Project_Database';
 
     %% Main processing
 
@@ -35,217 +38,51 @@ function CreateTrainingDataset()
     numberOfGeneratedNoisySignals = 10; % Can vary this.
 
     % Set Google Drive folder IDs (replace these with your actual folder IDs)
-    googleDriveFolderIDClean = createGoogleDriveFolder('cleanSignals', '');
-    googleDriveFolderIDNoisy = createGoogleDriveFolder('noisySignals', '');
+    if strcmp(saveOption, 'googleDrive')
+        googleDriveFolderIDClean = createGoogleDriveFolder('cleanSignals', '');
+        googleDriveFolderIDNoisy = createGoogleDriveFolder('noisySignals', '');
 
-    % Create subdirectories for SNR levels
-    snrFolderIDs = struct();
+        % Create subdirectories for SNR levels
+        snrFolderIDs = struct();
+
+        for i = 1 : length(SNR)
+            folderName = ['SNR', num2str(SNR(i))];    
+            snrFolderIDs.(folderName) = createGoogleDriveFolder(folderName, googleDriveFolderIDNoisy);
+        end
+    else
+        googleDriveFolderIDClean = '';
+        snrFolderIDs = struct();
+        ensureLocalDirectories(localSavePath, SNR);
+    end
+
+    % Generate noisy database and upload to Google Drive or save locally
+    generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, 500, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath);
+end
+
+function ensureLocalDirectories(localSavePath, SNR)
+    % Create the required directories for local saving
+    if ~isfolder(fullfile(localSavePath, 'cleanSignals'))
+        mkdir(fullfile(localSavePath, 'cleanSignals'));
+    end
+
+    noisyPath = fullfile(localSavePath, 'noisySignals');
+    if ~isfolder(noisyPath)
+        mkdir(noisyPath);
+    end
 
     for i = 1 : length(SNR)
-        folderName = ['SNR', num2str(SNR(i))];
-        snrFolderIDs.(folderName) = createGoogleDriveFolder(folderName, googleDriveFolderIDNoisy);
-    end
-
-    % Generate noisy database and upload to Google Drive
-    generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, 500, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs);
-
-end
-
-function folderID = createGoogleDriveFolder(folderName, parentFolderID)
-    % createGoogleDriveFolder - Creates a folder in Google Drive.
-    %
-    % Syntax: folderID = createGoogleDriveFolder(folderName, parentFolderID)
-    %
-    % Inputs:
-    %    folderName - Name of the folder to create.
-    %    parentFolderID - ID of the parent folder in Google Drive (optional).
-    %
-    % Outputs:
-    %    folderID - ID of the created folder.
-
-    % Read OAuth 2.0 credentials from JSON file
-    credentialsFile = '/Users/benrussell/Frameworks/Google-Drive/client_secret_327364716932-78oacfgib4ilrotdphikdpbkvfnlk76c.apps.googleusercontent.com.json'; % Update this path
-
-    if ~isfile(credentialsFile)
-        error('Credentials file not found: %s', credentialsFile);
-    end
-    
-    fid = fopen(credentialsFile, 'r');
-    if fid == -1
-        error('Cannot open credentials file: %s', credentialsFile);
-    end
-    
-    raw = fread(fid, inf);
-    str = char(raw');
-    fclose(fid);
-    
-    credentials = jsondecode(str);
-
-    % Authenticate and get access token
-    refreshToken = getStoredRefreshToken();
-    accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken);
-
-    % Check if the folder already exists
-    folderID = checkGoogleDriveFolderExists(folderName, parentFolderID, accessToken);
-    if ~isempty(folderID)
-        fprintf('Folder already exists: %s\n', folderID);
-        return;
-    end
-
-    % Define the metadata for the folder
-    metadata = struct( ...
-        'name', folderName, ...
-        'mimeType', 'application/vnd.google-apps.folder');
-
-    if ~isempty(parentFolderID)
-        metadata.parents = {parentFolderID};
-    end
-
-    % Convert metadata to JSON format
-    metadataJson = jsonencode(metadata);
-
-    % Define HTTP header with authorization and content type
-    options = weboptions('HeaderFields', { ...
-        'Authorization', ['Bearer ', accessToken]; ...
-        'Content-Type', 'application/json'}, ...
-        'MediaType', 'application/json');
-
-    % Define Google Drive API endpoint for creating a folder
-    apiEndpoint = 'https://www.googleapis.com/drive/v3/files';
-
-    % Create the folder
-    response = webwrite(apiEndpoint, metadataJson, options);
-
-    % Extract folder ID from response
-    folderID = response.id;
-
-    % Display the created folder ID
-    fprintf('Created folder ID: %s\n', folderID);
-end
-
-function refreshToken = getStoredRefreshToken()
-    % getStoredRefreshToken - Get stored refresh token from a file
-    %
-    % Syntax: refreshToken = getStoredRefreshToken()
-    %
-    % Outputs:
-    %    refreshToken - Refresh token for Google Drive API.
-
-    tokenFile = 'refresh_token.mat';
-    if isfile(tokenFile)
-        load(tokenFile, 'refreshToken');
-    else
-        % Obtain and store the refresh token if it doesn't exist
-        refreshToken = getRefreshToken();
-        save(tokenFile, 'refreshToken');
-    end
-end
-
-function accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken)
-    % getAccessTokenUsingRefreshToken - Get access token using refresh token
-    %
-    % Syntax: accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken)
-    %
-    % Inputs:
-    %    credentials - OAuth 2.0 credentials loaded from JSON file.
-    %    refreshToken - Refresh token obtained from manual authorization.
-    %
-    % Outputs:
-    %    accessToken - Access token for Google Drive API.
-
-    % Define OAuth 2.0 token endpoint and client details
-    tokenEndpoint = 'https://oauth2.googleapis.com/token';
-    clientID = credentials.installed.client_id;
-    clientSecret = credentials.installed.client_secret;
-
-    % Exchange refresh token for access token
-    data = struct('client_id', clientID, 'client_secret', clientSecret, ...
-                  'refresh_token', refreshToken, 'grant_type', 'refresh_token');
-
-    % Perform the web request using matlab.net.http package
-    import matlab.net.http.*
-    import matlab.net.http.field.*
-    import matlab.net.http.io.*
-
-    % Convert struct to application/x-www-form-urlencoded format
-    fields = fieldnames(data);
-    bodyContent = [];
-    for i = 1 : numel(fields)
-        bodyContent = [bodyContent, fields{i}, '=', urlencode(data.(fields{i})), '&'];
-    end
-    bodyContent(end) = []; % Remove trailing ampersand
-
-    header = [ContentTypeField('application/x-www-form-urlencoded')];
-    requestBody = FormProvider(bodyContent);
-
-    request = RequestMessage('POST', header, requestBody);
-    response = send(request, matlab.net.URI(tokenEndpoint));
-
-    if response.StatusCode == 200
-        accessToken = response.Body.Data.access_token;
-    else
-        % If refresh token is invalid, prompt re-authorization
-        if strcmp(response.Body.Data.error, 'invalid_grant')
-            fprintf('Invalid refresh token. Re-authorizing...\n');
-            refreshToken = getRefreshToken();
-            accessToken = getAccessTokenUsingRefreshToken(credentials, refreshToken);
-        else
-            error('Failed to get the access token: %s', char(response.Body.Data));
+        snrPath = fullfile(noisyPath, ['SNR', num2str(SNR(i))]);
+        if ~isfolder(snrPath)
+            mkdir(snrPath);
         end
     end
 end
 
-function folderID = checkGoogleDriveFolderExists(folderName, parentFolderID, accessToken)
-    % checkGoogleDriveFolderExists - Checks if a folder exists in Google Drive.
-    %
-    % Syntax: folderID = checkGoogleDriveFolderExists(folderName, parentFolderID, accessToken)
-    %
-    % Inputs:
-    %    folderName - Name of the folder to check.
-    %    parentFolderID - ID of the parent folder in Google Drive.
-    %    accessToken - Access token for Google Drive API.
-    %
-    % Outputs:
-    %    folderID - ID of the existing folder, or empty if not found.
-
-    % Define Google Drive API endpoint for listing files
-    apiEndpoint = 'https://www.googleapis.com/drive/v3/files';
-
-    % Define query to search for the folder
-    if isempty(parentFolderID)
-        query = sprintf('name = "%s" and mimeType = "application/vnd.google-apps.folder" and trashed = false', folderName);
-    else
-        query = sprintf('name = "%s" and mimeType = "application/vnd.google-apps.folder" and "%s" in parents and trashed = false', folderName, parentFolderID);
-    end
-
-    % Define HTTP header with authorization
-    options = weboptions('HeaderFields', { ...
-        'Authorization', ['Bearer ', accessToken]}, ...
-        'Timeout', 30);
-
-    % Construct the URL with query parameters
-    url = sprintf('%s?q=%s&fields=files(id,name)', apiEndpoint, urlencode(query));
-
-    % Perform the web request
-    response = webread(url, options);
-
-    % Check if the folder exists
-    if isfield(response, 'files') && ~isempty(response.files)
-        folderID = response.files(1).id;
-    else
-        folderID = '';
-    end
-end
-
-function generatingNoisyEcgDatabase(noiseSignalPath, ...
-    ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
-    numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs)
+function generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, ecgFs, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath)
     % generatingNoisyEcgDatabase - Models new noise sections, then corrupts the
     % clean ECG's with pre-defined SNR levels of electrode motion noise.
     %
-    % Syntax: generatingNoisyEcgDatabase(noiseSignalPath, ...
-    %    ecgSignalPath, ecgFs, maxNosieSections, SNR, ...
-    %    numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs)
+    % Syntax: generatingNoisyEcgDatabase(noiseSignalPath, ecgSignalPath, ecgFs, maxNosieSections, SNR, numberOfGeneratedNoisySignals, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath)
     %
     % Inputs:
     %    noiseSignalPath - Directory to real noise .mat file.
@@ -253,10 +90,11 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
     %    ecgFs - Sampling frequency of ECG signals.
     %    maxNosieSections - Maximum number of noise segments per ECG file.
     %    SNR - Array containing the required signal to noise ratios.
-    %    numberOfGeneratedNoisySignals - The number of noisy signals to
-    %    generate from each clean ECG signal.
+    %    numberOfGeneratedNoisySignals - The number of noisy signals to generate from each clean ECG signal.
     %    googleDriveFolderIDClean - Google Drive Folder ID to save the clean files.
     %    snrFolderIDs - Struct containing Google Drive Folder IDs for SNR levels.
+    %    saveOption - Option to save locally or upload to Google Drive ('local' or 'googleDrive').
+    %    localSavePath - Path to save the files locally if saveOption is 'local'.
     %
     % Outputs: none.
     %
@@ -264,7 +102,6 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
     % Subfunctions: computeRmsNoiseAmp, generateInitialTable, uploadToGoogleDrive.
     % MAT-files required: none.
 
-    %------------- BEGIN CODE --------------
     %% Set constants
     QRS_SEARCH_WINDOW = 0.05; % [s]
     ECG_LENGTH_SECONDS = 30;
@@ -291,24 +128,16 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
     % Generate all the noise signals for each section of data. These signals
     % are not scaled with respect to SNR right now.
     for iNoiseSection = 1 : maxNosieSections
-
-        noiseSectionEnd = noiseSectionStart(iNoiseSection) + ...
-            acceptableEcgLength500 - 1;
+        noiseSectionEnd = noiseSectionStart(iNoiseSection) + acceptableEcgLength500 - 1;
 
         % All noise signals for this section.
-        thisNoiseSection = noiseSignal(noiseSectionStart(iNoiseSection): ...
-            noiseSectionEnd);
+        thisNoiseSection = noiseSignal(noiseSectionStart(iNoiseSection): noiseSectionEnd);
 
-        initialGenerateNoise.("EM_Noise"){iNoiseSection, 1} = noiseSignalModeling(...
-            thisNoiseSection, ...
-            numberOfGeneratedNoisySignals);
-
+        initialGenerateNoise.("EM_Noise"){iNoiseSection, 1} = noiseSignalModeling(thisNoiseSection, numberOfGeneratedNoisySignals);
     end
 
     % Filter out meta data 
-    filterFlag = strcmp({ecgSignalDirInfo.name}, "AngleData.mat") | ...
-        strcmp({ecgSignalDirInfo.name}, "widthData.mat") | ...
-        strcmp({ecgSignalDirInfo.name}, "zData.mat");
+    filterFlag = strcmp({ecgSignalDirInfo.name}, "AngleData.mat") | strcmp({ecgSignalDirInfo.name}, "widthData.mat") | strcmp({ecgSignalDirInfo.name}, "zData.mat");
 
     ecgSignalDirInfo(filterFlag) = [];
 
@@ -321,25 +150,21 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
     % Process each valid ecg file.
     for iEcgFile = 1 : nEcgFiles
 
-        ecgSignalFileName = fullfile(ecgSignalPath, ...
-            ecgSignalDirInfo(iEcgFile).name);
+        ecgSignalFileName = fullfile(ecgSignalPath, ecgSignalDirInfo(iEcgFile).name);
 
         TempData = load(ecgSignalFileName);
         tempDataFieldNames = fieldnames(TempData);
 
-        % If the file contains one variable it will be taken as the ecg
-        % signal.
+        % If the file contains one variable it will be taken as the ecg signal.
         rawEcgSignal = TempData.(tempDataFieldNames{1}).ecgSignal;
 
         % Trim this signal to be 30 seconds in duration.
         rawEcgSignal = rawEcgSignal(1:acceptableEcgLength500);
 
-        % Initial data table. One table will be generated for each valid
-        % file and stored in a separate file in result folder.
+        % Initial data table. One table will be generated for each valid file and stored in a separate file in result folder.
         [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSections);
 
-        % Make sure the ecg signal is in column orientation and store the
-        % data and file name in the data table.
+        % Make sure the ecg signal is in column orientation and store the data and file name in the data table.
         rawEcgSignal = rawEcgSignal(:);
         DataTable.ecgSignal(1, 1) = {rawEcgSignal};
         DataTable.FileName(1, 1) = ecgSignalDirInfo(iEcgFile).name(1:end-4);
@@ -354,8 +179,7 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
         qrsValidFlag = find(qrsLocations <= lengthOfThisEcgSignal);
         qrsLocations = qrsLocations(1:numel(qrsValidFlag));
 
-        % Convert the qrs search window to samples. This window will be used to
-        % calculate the qrs amplitude.
+        % Convert the qrs search window to samples. This window will be used to calculate the qrs amplitude.
         qrsSearchWindow = round(QRS_SEARCH_WINDOW * ecgFs);
 
         % Pre-allocate memory.
@@ -364,71 +188,48 @@ function generatingNoisyEcgDatabase(noiseSignalPath, ...
 
         % Calculate the peak to peak amplitude of the qrs complexes.
         for jQrsLocations = 1:nQrsLocations
-
-            if (qrsLocations(jQrsLocations) + qrsSearchWindow <= lengthOfThisEcgSignal) && ...
-               (qrsLocations(jQrsLocations) - qrsSearchWindow >= 1)
-
-                qrsAmpMax = max(rawEcgSignal(qrsLocations(jQrsLocations) - qrsSearchWindow: ...
-                                             qrsLocations(jQrsLocations) + qrsSearchWindow));
-                qrsAmpMin = min(rawEcgSignal(qrsLocations(jQrsLocations) - qrsSearchWindow: ...
-                                             qrsLocations(jQrsLocations) + qrsSearchWindow));
+            if (qrsLocations(jQrsLocations) + qrsSearchWindow <= lengthOfThisEcgSignal) && (qrsLocations(jQrsLocations) - qrsSearchWindow >= 1)
+                qrsAmpMax = max(rawEcgSignal(qrsLocations(jQrsLocations) - qrsSearchWindow: qrsLocations(jQrsLocations) + qrsSearchWindow));
+                qrsAmpMin = min(rawEcgSignal(qrsLocations(jQrsLocations) - qrsSearchWindow: qrsLocations(jQrsLocations) + qrsSearchWindow));
                 qrsPeakToPeak(jQrsLocations, 1) = qrsAmpMax - qrsAmpMin;
             end
-
         end
 
-        % Convert the peak to peak qrs amplitude to power. This is the correct
-        % transformation for a sine wave. In this instance, it approximates close
-        % enough for measurement. See the PDF of ecg SNR report for derivation.
+        % Convert the peak to peak qrs amplitude to power. This is the correct transformation for a sine wave. In this instance, it approximates close enough for measurement. See the PDF of ecg SNR report for derivation.
         qrsPeakToPeakPower = (mean(qrsPeakToPeak, 'omitnan') ^ 2) / 8;
 
-        % Now using the qrs peak to peak power all the noises in each
-        % section will be scaled for every SNR level.
+        % Now using the qrs peak to peak power all the noises in each section will be scaled for every SNR level.
         for kSNR = 1 : nSNR
-
             thisNoise = initialGenerateNoise.("EM_Noise");
 
             for mSection = 1:maxNosieSections
-
                 thisNoiseSection = thisNoise{mSection, 1};
 
                 for iGenSignal = 1:numberOfGeneratedNoisySignals + 1
-
                     thisNoiseSignal = thisNoiseSection{iGenSignal, 1};
                     thisNoiseSignal = thisNoiseSignal(1:lengthOfThisEcgSignal);
 
                     % Calculate power of noise signals.
                     thisNoiseSignalPower = computeRmsNoiseAmp(thisNoiseSignal) ^ 2;
 
-                    % Calculate the scale factor which is required to
-                    % achieve the desired SNR level with each noisy
-                    % signal.
-                    scaleFactor = sqrt(qrsPeakToPeakPower / ...
-                        (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
+                    % Calculate the scale factor which is required to achieve the desired SNR level with each noisy signal.
+                    scaleFactor = sqrt(qrsPeakToPeakPower / (thisNoiseSignalPower * (10 ^ (SNR(kSNR) / 10))));
 
                     scaledSignal = thisNoiseSignal * scaleFactor;
 
                     % Save the noise corrupt signals in the data table.
-                    DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1). ...
-                        (string(noiseNames)){iGenSignal, 1} = ...
-                        scaledSignal + rawEcgSignal;
-
+                    DataTable.(['SNR', num2str(SNR(kSNR))])(mSection, 1).(string(noiseNames)){iGenSignal, 1} = scaledSignal + rawEcgSignal;
                 end
-
             end
-
         end
 
-        % Call function to convert and save each signal to a readable format for
-        % deep learning models and upload to Google Drive.
-        convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs);
-
+        % Call function to convert and save each signal to a readable format for deep learning models and upload to Google Drive or save locally.
+        convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath);
     end
-
 end
 
-function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
-    % Save all signals to a more readable format and upload to Google Drive
+function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, saveOption, localSavePath)
+    % Save all signals to a more readable format and upload to Google Drive or save locally
 
     % Constants.
     NUM_OF_SNR = 5;
@@ -458,18 +259,26 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
     h5create(cleanFilePath, '/ecgSignal', size(cleanSignal));
     h5write(cleanFilePath, '/ecgSignal', cleanSignal);
 
-    % Upload the clean signal to Google Drive
-    uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
+    % Upload the clean signal to Google Drive or save locally
+    if strcmp(saveOption, 'googleDrive')
+        uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
+    else
+        % Save locally
+        localCleanPath = fullfile(localSavePath, 'cleanSignals');
+        if ~isfolder(localCleanPath)
+            mkdir(localCleanPath);
+        end
+        movefile(cleanFilePath, fullfile(localCleanPath, strcat(fileName, '.h5')));
+        fprintf('Saved clean signal locally: %s\n', fullfile(localCleanPath, strcat(fileName, '.h5')));
+    end
 
     % Now we need to loop through the noisy signals.
-    for iSection = 1:height(DataTable)
-
+    for iSection = 1 : height(DataTable)
         % Extract the section number 
         sectionNumber = iSection;
 
         % Loop through each SNR value.
-        for iSNR = 1:NUM_OF_SNR
-
+        for iSNR = 1 : NUM_OF_SNR
             % Index into corresponding SNR column
             SNRValue = ['SNR', num2str((iSNR-1) * 6)];
 
@@ -481,7 +290,6 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
 
             % Loop through each copy (From AR-Modelling)
             for iCopy = 1 : numel(sectionNoise)
-
                 % Specify the noise type.
                 if iCopy == 1
                     noiseType = 'Original';
@@ -498,9 +306,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
                 end
 
                 % Let's create a filename based on the type of signal.
-                outputFilename = fullfile(tempDirectory, ...
-                    strcat(erase(fileName, '_cleanSignal'), '-', ...
-                    noiseType, '-', num2str(sectionNumber), '.h5'));
+                outputFilename = fullfile(tempDirectory, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5'));
 
                 % Check if the file already exists
                 if isfile(outputFilename)
@@ -512,12 +318,21 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs)
                 h5create(outputFilename, '/ecgSignal', size(noisyEcg));
                 h5write(outputFilename, '/ecgSignal', noisyEcg);
 
-                % Upload the noisy signal to Google Drive
-                uploadToGoogleDrive(outputFilename, snrFolderIDs.(SNRValue));
+                % Upload the noisy signal to Google Drive or save locally
+                if strcmp(saveOption, 'googleDrive')
+                    uploadToGoogleDrive(outputFilename, snrFolderIDs.(SNRValue));
+                else
+                    % Save locally
+                    localNoisyPath = fullfile(localSavePath, 'noisySignals', SNRValue);
+                    if ~isfolder(localNoisyPath)
+                        mkdir(localNoisyPath);
+                    end
+                    movefile(outputFilename, fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
+                    fprintf('Saved noisy signal locally: %s\n', fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
+                end
             end
         end
     end
-
 end
 
 function uploadToGoogleDrive(filePath, folderID)
@@ -538,7 +353,7 @@ function uploadToGoogleDrive(filePath, folderID)
     if ~isfile(credentialsFile)
         error('Credentials file not found: %s', credentialsFile);
     end
-    
+
     fid = fopen(credentialsFile, 'r');
     raw = fread(fid, inf);
     str = char(raw');
@@ -551,10 +366,11 @@ function uploadToGoogleDrive(filePath, folderID)
 
     % Read the file content
     fid = fopen(filePath, 'rb');
+
     if fid == -1
         error('Cannot open file: %s', filePath);
     end
-    
+
     fileContent = fread(fid, '*uint8');
     fclose(fid);
 
@@ -562,19 +378,15 @@ function uploadToGoogleDrive(filePath, folderID)
     [~, fileName, ext] = fileparts(filePath);
     fileName = strcat(fileName, ext);
 
-    metadata = struct( ...
-        'name', fileName, ...
-        'parents', { {folderID} });
-
-    % Convert metadata to JSON format
+    metadata = struct('name', fileName, 'parents', { {folderID} });
     metadataJson = jsonencode(metadata);
 
-    % Create a multipart/form-data body for the HTTP request
+    % Define the boundary string
     boundary = '-------314159265358979323846';
     CRLF = [char(13) char(10)];
 
     % Construct the multipart body
-    body = [
+    body = [ ...
         '--' boundary CRLF ...
         'Content-Type: application/json; charset=UTF-8' CRLF CRLF ...
         metadataJson CRLF ...
@@ -611,11 +423,8 @@ function uploadToGoogleDrive(filePath, folderID)
     end
 end
 
-
 function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
-    % Computes the Root-Mean-Squared amplitude of a signal by measuring the RMS
-    % value for each second and then discarding the top and bottom 5% of
-    % values.
+    % Computes the Root-Mean-Squared amplitude of a signal by measuring the RMS value for each second and then discarding the top and bottom 5% of values.
 
     % In this function, sampling rate is fixed at 500 Hz.
     SIGNAL_FS = 500; % [Hz]
@@ -627,7 +436,6 @@ function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
     rmsVals = nan(nSignalSeconds, 1);
 
     for iSec = 1 : nSignalSeconds
-
         % Get indexes for start and end of section.
         thisSectionStart = (iSec - 1) * SIGNAL_FS + 1;
         thisSectionEnd = iSec * SIGNAL_FS;
@@ -635,15 +443,12 @@ function [noiseAmp] = computeRmsNoiseAmp(noiseSection)
         % Grab the section from the noise signal.
         thisSignalSection = noiseSection(thisSectionStart:thisSectionEnd);
 
-        % Compute the RMS amplitude difference between the mean of the section
-        % and the section itself.
+        % Compute the RMS amplitude difference between the mean of the section and the section itself.
         rmsVals(iSec) = rms(thisSignalSection - mean(thisSignalSection));
-
     end
 
     % Discard highest and lowest 5% of values.
     noiseAmp = trimmean(rmsVals, 5, 'round');
-
 end
 
 function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSections)
@@ -656,8 +461,7 @@ function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSecti
 
     noiseNames = fieldnames(noiseStructure);
     SectionNum = 1;
-    DataTable = table(fileName, ecgSignal, SectionNum, noiseStructure, ...
-        'VariableNames', variableNames);
+    DataTable = table(fileName, ecgSignal, SectionNum, noiseStructure, 'VariableNames', variableNames);
 
     nInitialVariableNames = numel(variableNames);
 
@@ -670,5 +474,4 @@ function [noiseNames, DataTable] = generateInitialTable(nSNR, SNR, maxNosieSecti
     DataTable(maxNosieSections, :) = DataTable(1, :);
     DataTable.SectionNum(1:end, 1) = 1:maxNosieSections;
     DataTable.FileName(:, :) = "";
-
 end

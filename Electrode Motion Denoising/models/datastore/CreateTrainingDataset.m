@@ -239,14 +239,14 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
     % Extract the clean signal.
     cleanSignal = DataTable.ecgSignal{1, 1};
 
-    % Ensure the temp directory is valid and accessible
-    tempDirectory = tempdir;
-    if ~isfolder(tempDirectory)
-        error('Temporary directory not found: %s', tempDirectory);
+    % Ensure the local directories are valid and accessible
+    localCleanPath = fullfile(localSavePath, 'cleanSignals');
+    if ~isfolder(localCleanPath)
+        mkdir(localCleanPath);
     end
 
     % Save the clean signal locally in H5 format.
-    cleanFilePath = fullfile(tempDirectory, strcat(fileName, '.h5'));
+    cleanFilePath = fullfile(localCleanPath, strcat(fileName, '.h5'));
 
     % Check if the file already exists
     if isfile(cleanFilePath)
@@ -257,18 +257,11 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
     % Create and write to the H5 file
     h5create(cleanFilePath, '/ecgSignal', size(cleanSignal));
     h5write(cleanFilePath, '/ecgSignal', cleanSignal);
+    fprintf('Saved clean signal locally: %s\n', cleanFilePath);
 
     % Upload the clean signal to Google Drive or save locally
     if strcmp(saveOption, 'googleDrive')
         uploadToGoogleDrive(cleanFilePath, googleDriveFolderIDClean);
-    else
-        % Save locally
-        localCleanPath = fullfile(localSavePath, 'cleanSignals');
-        if ~isfolder(localCleanPath)
-            mkdir(localCleanPath);
-        end
-        movefile(cleanFilePath, fullfile(localCleanPath, strcat(fileName, '.h5')));
-        fprintf('Saved clean signal locally: %s\n', fullfile(localCleanPath, strcat(fileName, '.h5')));
     end
 
     % Now we need to loop through the noisy signals.
@@ -299,13 +292,14 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
                 % Extract the noisy ECG signal.
                 noisyEcg = cell2mat(sectionNoise(iCopy));
 
-                % Ensure the temp directory is valid and accessible
-                if ~isfolder(tempDirectory)
-                    error('Temporary directory not found: %s', tempDirectory);
+                % Ensure the local directories are valid and accessible
+                localNoisyPath = fullfile(localSavePath, 'noisySignals', SNRValue);
+                if ~isfolder(localNoisyPath)
+                    mkdir(localNoisyPath);
                 end
 
                 % Let's create a filename based on the type of signal.
-                outputFilename = fullfile(tempDirectory, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5'));
+                outputFilename = fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5'));
 
                 % Check if the file already exists
                 if isfile(outputFilename)
@@ -316,18 +310,11 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
                 % Save the noisy signal locally in h5 format.
                 h5create(outputFilename, '/ecgSignal', size(noisyEcg));
                 h5write(outputFilename, '/ecgSignal', noisyEcg);
+                fprintf('Saved noisy signal locally: %s\n', outputFilename);
 
                 % Upload the noisy signal to Google Drive or save locally
                 if strcmp(saveOption, 'googleDrive')
                     uploadToGoogleDrive(outputFilename, snrFolderIDs.(SNRValue));
-                else
-                    % Save locally
-                    localNoisyPath = fullfile(localSavePath, 'noisySignals', SNRValue);
-                    if ~isfolder(localNoisyPath)
-                        mkdir(localNoisyPath);
-                    end
-                    movefile(outputFilename, fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
-                    fprintf('Saved noisy signal locally: %s\n', fullfile(localNoisyPath, strcat(erase(fileName, '_cleanSignal'), '-', noiseType, '-', num2str(sectionNumber), '.h5')));
                 end
             end
         end
@@ -409,7 +396,7 @@ function uploadToGoogleDrive(filePath, folderID)
     response = request.send(matlab.net.URI(apiEndpoint));
 
     % Check the response status
-    if response.StatusCode == matlab.net.http.StatusCode.OK || response.StatusCode == matlab.net.http.StatusCode.Created
+    if response.StatusCode == matlab.net.http.StatusCode.OK || response.StatusCode.Created
         fileResponse = response.Body.Data;
         fileID = fileResponse.id;
         % Display the uploaded file ID
