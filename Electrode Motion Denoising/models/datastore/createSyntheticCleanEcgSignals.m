@@ -25,10 +25,10 @@ MAX_ANGLES_OF_EXTRAMA = [-80 -25 0 25 120];
 MIN_Z_POSITION_OF_EXTRAMA = [0.9 -7 20 -10 0.5];
 MAX_Z_POSITION_OF_EXTRAMA = [1.5 -2 45 -5 1];
 MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
-MAX_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
+MAX_GAUSSIAN_WIDTH = [0.75 0.4 0.8 0.1 0.4];
 
 % Number of different sigals to generate.
-numOfCleanSignals = 100;
+numOfCleanSignals = 2;
 
 % Employ Latin Hyper Cube sampling to generate all possible combinations of
 % parameter values.

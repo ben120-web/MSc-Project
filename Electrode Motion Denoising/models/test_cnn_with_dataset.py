@@ -1,34 +1,32 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd.variable import Variable
 from torch.utils.data import Dataset, DataLoader
 import torch.optim as optim
 import math
-
-from sklearn.model_selection import train_test_split
-
 import numpy as np
 import os
 import glob
 import matplotlib.pyplot as plt
-import math
-import json as js
 import h5py
-import pandas as pd
-from sklearn.model_selection import train_test_split
 from ecgdetectors import Detectors
 
+# Check if GPU is available
 device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+userSelectTrain = False
 
 if torch.cuda.is_available():
-  cuda = True
-  print('Using: ' +str(torch.cuda.get_device_name(device)))
+    cuda = True
+    print('Using: ' + str(torch.cuda.get_device_name(device)))
+elif torch.backends.mps.is_available():
+    device = torch.device('mps')
+    cuda = True
+    print('Using: MPS')
 else:
-  cuda = False
-  print('Using: CPU')
+    cuda = False
+    print('Using: CPU')
 
-Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
+Tensor = torch.cuda.FloatTensor if cuda and torch.cuda.is_available() else torch.FloatTensor if cuda and torch.backends.mps.is_available() else torch.FloatTensor
 
 # Set the Peak detectors to work at 500Hz
 detectors = Detectors(500)
@@ -37,29 +35,26 @@ detectors = Detectors(500)
 clean_signals_path = '/Users/benrussell/Library/CloudStorage/GoogleDrive-rben3625@gmail.com/My Drive/cleanSignals/'
 noisy_signals_path = '/Users/benrussell/Library/CloudStorage/GoogleDrive-rben3625@gmail.com/My Drive/noisySignals/'
 
-## HELPER FUNCTIONS
-
 # Function to load HDF5 files
 def load_h5_file(file_path):
-  try:
-      with h5py.File(file_path, 'r') as f:
-          return f['ecgSignal'][:]
-        
-  except OSError as e:
-    print("Unable to open file" + file_path)
+    try:
+        with h5py.File(file_path, 'r') as f:
+            return f['ecgSignal'][:]
+    except OSError as e:
+        print("Unable to open file" + file_path)
+        return None
 
-# Function to get Root Mean Square.
+# Function to get Root Mean Square
 def get_rms(records):
     return math.sqrt(sum([x ** 2 for x in records]) / len(records))
 
-# Custom Loss Function.
-def lossfcn(y_true, y_pred, peaks, a = 20):
-    
+# Custom Loss Function
+def lossfcn(y_true, y_pred, peaks, a=20):
     criterion = nn.MSELoss().to(device)
     alpha = a
     loss = 0.0
     R = 0.0
-    for x,y,z in zip(y_pred, y_true, peaks):
+    for x, y, z in zip(y_pred, y_true, peaks):
         qrs_loss = []
 
         # Remove Padding from NN
@@ -68,16 +63,13 @@ def lossfcn(y_true, y_pred, peaks, a = 20):
             max_ind = qrs + 1
 
             if max_ind < 35:
-                qrs_loss.append(criterion(x[:max_ind + 37],
-                                        y[:max_ind + 37]))
-            elif max_ind>1243:
-                qrs_loss.append(criterion(x[max_ind - 36:],
-                                        y[max_ind - 36:]))
+                qrs_loss.append(criterion(x[:max_ind + 37], y[:max_ind + 37]))
+            elif max_ind > 1243:
+                qrs_loss.append(criterion(x[max_ind - 36:], y[max_ind - 36:]))
             else:
-                qrs_loss.append(criterion(x[max_ind - 36:max_ind + 37],
-                                        y[max_ind - 36 : max_ind + 37]))
-            
-        R_loss = alpha * (torch.mean(torch.tensor(qrs_loss))) 
+                qrs_loss.append(criterion(x[max_ind - 36:max_ind + 37], y[max_ind - 36:max_ind + 37]))
+
+        R_loss = alpha * (torch.mean(torch.tensor(qrs_loss)))
         if math.isnan(R_loss):
             R_loss = 0
         R += R_loss
@@ -88,7 +80,7 @@ def lossfcn(y_true, y_pred, peaks, a = 20):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-## BUILD NETWORKS and Dataset.
+# ECG Dataset
 class ECGDataset(Dataset):
     def __init__(self, clean_signals, noisy_signals):
         self.clean_signals = clean_signals
@@ -129,156 +121,114 @@ class CNN(nn.Module):
         out = self.out(x)
         return out
 
-## Region-Based Convolutional Neural Network (RCNN) MODEL.
-class RCNN(nn.Module):
+if __name__ == '__main__':
+    print("Starting script execution...")
 
-    def __init__(self, input_size):
-        super(RCNN, self).__init__()
+    # Load clean signals
+    clean_signals = {}
+    for file in glob.glob(os.path.join(clean_signals_path, '*.h5')):
+        signal_number = os.path.basename(file).split('_')[1]
+        clean_signals[signal_number] = load_h5_file(file)
 
-        self.input_size = input_size
+    # Load noisy signals and group by signal number
+    noisy_signals = {snr: {} for snr in ['SNR18', 'SNR24']} #'SNR0', 'SNR6', 'SNR12', 
 
-        self.cv1_k = 3
-        self.cv1_s = 1
-        self.cv1_out = int(((self.input_size - self.cv1_k) / self.cv1_s) + 1)
+    # Loop through each SNR level.
+    for snr in noisy_signals.keys():
+        # Set the path to the specific SNR under test.
+        snr_path = os.path.join(noisy_signals_path, snr)
 
-        self.cv2_k = 3
-        self.cv2_s = 1
-        self.cv2_out = int(((self.cv1_out - self.cv2_k) / self.cv2_s) + 1)
+        # Loop through each file in the directory of the SNR.
+        for file in glob.glob(os.path.join(snr_path, '*.h5')):
+            # Extract the signal number from the file name.
+            signal_number = os.path.basename(file).split('-')[0].split('_')[1]
 
-        self.cv3_k = 5
-        self.cv3_s = 1
-        self.cv3_out = int(((self.cv2_out - self.cv3_k) / self.cv3_s) + 1)
+            # If the signal number is not in noisy signals, set as empty.
+            if signal_number not in noisy_signals[snr]:
+                noisy_signals[snr][signal_number] = []
 
-        self.cv4_k = 5
-        self.cv4_s = 1
-        self.cv4_out = int(((self.cv3_out - self.cv4_k) / self.cv4_s) + 1)
+            # Append the noisy signal to the dictionary.
+            noisy_signals[snr][signal_number].append(load_h5_file(file)) 
 
-        self.layer_1 = nn.Sequential(
-            nn.Conv1d(in_channels = 1, out_channels = 3, kernel_size = (3)),
-            nn.BatchNorm1d(num_features=3),
-            nn.ReLU(inplace = True),
-            nn.AvgPool1d(kernel_size=1)
-        )
+    # Verify the structure
+    print("Clean signals loaded:", len(clean_signals))
 
-        self.layer_2 = nn.Sequential(
-            nn.Conv1d(in_channels=3, out_channels=5, kernel_size=(3)),
-            nn.BatchNorm1d(num_features=5),
-            nn.ReLU(inplace=True),
-            nn.AvgPool1d(kernel_size = 1)
-        )
+    for snr in noisy_signals:
+        print(f"Noisy signals loaded for {snr}: {len(noisy_signals[snr])}") 
 
-        self.layer_3 = nn.Sequential(
-            nn.Conv1d(in_channels=5, out_channels=3, kernel_size=(5)),
-            nn.BatchNorm1d(num_features=3),
-            nn.ReLU(inplace=True)
-        )
+    # Create the dataset and dataloader
+    dataset = ECGDataset(clean_signals, noisy_signals)
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=2)
 
-        self.layer_4 = nn.Sequential(
-            nn.Conv1d(in_channels=3, out_channels=1, kernel_size=(5)),
-            nn.BatchNorm1d(num_features=1),
-            nn.ReLU(inplace=True),
-            nn.Dropout(p=0.5, inplace=False)
-        )
+    net = CNN().float().to(device)
+    criterion = nn.MSELoss().to(device)
+    optimizer = optim.RMSprop(net.parameters(), lr=0.0002)
 
-        self.layer_5 = nn.Sequential(
-            nn.Linear(self.cv4_out, 1080),  # FC Layer
-            nn.Linear(1080, 1080)  # Regression
-        )
+    # Training (Only train if specified.)
+    if userSelectTrain:
+        for epoch in range(10):  # loop over the dataset multiple times
+            print("=========== EPOCH " + str(epoch) + " ===========")
+            running_loss = 0.0
 
-    def forward(self, x):
-        x = self.layer_1(x)
-        x = self.layer_2(x)
-        x = self.layer_3(x)
-        x = self.layer_4(x)
-        x = x.view(x.size(0), -1)
-        x = self.layer_5(x)
-        return x
-      
-# Load clean signals
-clean_signals = {}
-for file in glob.glob(os.path.join(clean_signals_path, '*.h5')):
-    signal_number = os.path.basename(file).split('_')[1]
-    clean_signals[signal_number] = load_h5_file(file)
+            # Iterate over all clean signals
+            for signal_number in clean_signals:
+                clean_signal = clean_signals[signal_number][0].astype(np.float32)  # Ensure the clean signal is in float32
+                clean_signal = torch.tensor(clean_signal).to(device).unsqueeze(0)  # Add batch dimension
 
-# Load noisy signals and group by signal number
-noisy_signals = {snr: {} for snr in ['SNR18', 'SNR24']} #'SNR0', 'SNR6', 'SNR12', 
+                # Iterate over all noisy variants for the current clean signal
+                for snr in noisy_signals:
+                    if signal_number in noisy_signals[snr]:  # Check if the signal number exists
+                        for noisy_variant in noisy_signals[snr][signal_number]:
+                            noisy_signal = torch.tensor(noisy_variant.astype(np.float32)).to(device).unsqueeze(0)  # Ensure the noisy signal is in float32 and add batch dimension
 
-# Loop through each SNR level.
-for snr in noisy_signals.keys():
+                            optimizer.zero_grad()
+                            outputs = net(noisy_signal)
+                            loss = criterion(outputs, clean_signal)
+                            loss.backward()
+                            optimizer.step()
+                            running_loss += loss.item()
 
-    # Set the path to the specific SNR under test.
-    snr_path = os.path.join(noisy_signals_path, snr)
+            print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(clean_signals)}')
 
-    # Loop through each file in the directory of the SNR.
-    for file in glob.glob(os.path.join(snr_path, '*.h5')):
+        print('Finished Training')
 
-        # Extract the signal number from the file name.
-        signal_number = os.path.basename(file).split('-')[0].split('_')[1]
+        # Save the model
+        torch.save(net.state_dict(), './model_weights.pt')
+        
+    else:
+        print('Using pre-trained model')
+        
+        # Load the saved model
+        net.load_state_dict(torch.load('./model_weights.pt'))
+        net.eval()
 
-        # If the signal number is not in noisy signals, set as empty.
-        if signal_number not in noisy_signals[snr]:
-            noisy_signals[snr][signal_number] = []
+    # Evaluation - Plot only 5 signals
+    with torch.no_grad():
+        plot_count = 0
+        for clean_signal, noisy_signals in dataloader:
+            print(f'clean_signal type: {type(clean_signal)}, shape: {clean_signal[0].shape}')
+            print(f'noisy_signals type: {type(noisy_signals)}, length: {len(noisy_signals)}')
 
-        # Append the noisy signal to the dictionary.
-        noisy_signals[snr][signal_number].append(load_h5_file(file)) 
-  
-# Verify the structure
-print("Clean signals loaded:", len(clean_signals))
+            clean_signal = clean_signal[0].float().unsqueeze(0).to(device)  # Shape: (1, 1, 15000)
+            
+            for noisy_signal in noisy_signals:
+                noisy_signal = noisy_signal[0].float().unsqueeze(0).to(device)  # Shape: (1, 1, 15000)
+                
+                outputs = net(noisy_signal)
+                
+                plt.figure()
+                plt.plot(noisy_signal.cpu().numpy().flatten(), label='noisy')
+                plt.plot(clean_signal.cpu().numpy().flatten(), label='clean')
+                plt.plot(outputs.cpu().numpy().flatten(), label='denoised')
+                plt.legend()
+                plt.show()
+                
+                plot_count += 1
+                if plot_count >= 5:
+                    break
+            if plot_count >= 5:
+                break
 
-for snr in noisy_signals:
-    print(f"Noisy signals loaded for {snr}: {len(noisy_signals[snr])}") 
-# Create the dataset and dataloader
-dataset = ECGDataset(clean_signals, noisy_signals)
-dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=2)
-
-net = CNN().float().to(device)
-criterion = nn.MSELoss().to(device)
-optimizer = optim.RMSprop(net.parameters(), lr = 0.0002)
-
-# Training
-for epoch in range(10):  # loop over the dataset multiple times
-    print("=========== EPOCH " + str(epoch) + " ===========")
-    running_loss = 0.0
-
-    # Iterate over all clean signals
-    for signal_number in clean_signals:
-        clean_signal = clean_signals[signal_number][0]  # Get the clean signal
-        clean_signal = torch.tensor(clean_signal).to(device).float().unsqueeze(0)  # Add batch dimension
-
-        # Iterate over all noisy variants for the current clean signal
-        for snr in noisy_signals:
-            if signal_number in noisy_signals[snr]:  # Check if the signal number exists
-              
-                for noisy_variant in noisy_signals[snr][signal_number]:
-                  noisy_signal = torch.tensor(noisy_variant).to(device).float().unsqueeze(0)  # Add batch dimension
-
-                  optimizer.zero_grad()
-                  outputs = net(noisy_signal)
-                  loss = criterion(outputs, clean_signal)
-                  loss.backward()
-                  optimizer.step()
-                  running_loss += loss.item()
-
-    print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(clean_signals)}')
-
-print('Finished Training')
-
-# Save the model
-torch.save(net.state_dict(), './model_weights.pt')
-
-# Evaluation
-net.eval()
-with torch.no_grad():
-    for clean_signal, noisy_signal in dataloader:
-        clean_signal = clean_signal.to(device).float()
-        noisy_signal = torch.tensor(noisy_signal).to(device).float().unsqueeze(0)  # Add batch dimension
-        outputs = net(noisy_signal[:, None, :])
-        plt.figure()
-        plt.plot(noisy_signal.cpu().numpy().flatten(), label='noisy')
-        plt.plot(clean_signal.cpu().numpy().flatten(), label='clean')
-        plt.plot(outputs.cpu().numpy().flatten(), label='denoised')
-        plt.legend()
-        plt.show()
-
-# Save the model
-torch.save(net.state_dict(), './model_weights.pt')
+    # Save the model
+    torch.save(net.state_dict(), './model_weights.pt')
+    print("Script execution completed.")

@@ -265,7 +265,7 @@ function convertToHDF5Format(DataTable, googleDriveFolderIDClean, snrFolderIDs, 
     end
 
     % Now we need to loop through the noisy signals.
-    for iSection = 1:height(DataTable)
+    for iSection = 1 : height(DataTable)
         % Extract the section number 
         sectionNumber = iSection;
 
