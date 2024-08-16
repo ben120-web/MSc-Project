@@ -16,20 +16,19 @@ userSelectTrain = True
 
 # Let's define a device to use. (GPU if desktop being used, MPS if Mac Book being used, CPU otherwise.)
 if torch.cuda.is_available():
-    cuda = True
-    print('Using: ' + str(torch.cuda.get_deviceName(device)))
+    device = torch.device('cuda')
+    print('Using: ' + str(torch.cuda.get_device_name(device)))
 elif torch.backends.mps.is_available():
     device = torch.device('mps')
-    cuda = True
     print('Using: MPS')
 else:
-    cuda = False
+    device = torch.device('cpu')
     print('Using: CPU')
 
 # Set the Peak detectors to work at 500Hz.
 detectors = Detectors(500)
 
-# Set path to google drive. (This needs mounted to your machine.)
+# Set path to Google Drive. (This needs mounted to your machine.)
 clean_signals_path = '/Users/benrussell/Library/CloudStorage/GoogleDrive-rben3625@gmail.com/My Drive/cleanSignals/'
 noisy_signals_path = '/Users/benrussell/Library/CloudStorage/GoogleDrive-rben3625@gmail.com/My Drive/noisySignals/'
 
@@ -51,7 +50,7 @@ def get_rms(records):
     return math.sqrt(sum([x ** 2 for x in records]) / len(records))
 
 # Custom Loss Function (This calculates the Mean Square Error around Heartbeats.)
-def lossfcn(y_true, y_pred, peaks, a = 20):
+def lossfcn(y_true, y_pred, peaks, a=20):
     
     # Set the Criterion to use Mean Square Error.
     criterion = nn.MSELoss().to(device)
@@ -67,15 +66,13 @@ def lossfcn(y_true, y_pred, peaks, a = 20):
         
         # Ensure z is a tensor and handle indices properly
         if z.dim() > 0:
-            
-            # FIGURE OUT WHAT THIS DOES.
-            z = z[z.nonzero(as_tuple = True)].squeeze()
+            z = z[z.nonzero(as_tuple=True)].squeeze()
 
             # Loop through the QRS locations (Peaks)
             for qrs in z:
                 
                 # Get the last peak in the signal.
-                max_ind =   qrs.item() + 1
+                max_ind = qrs.item() + 1
 
                 # If the last peak is less than 35, append
                 if max_ind < 35:
@@ -105,90 +102,83 @@ def lossfcn(y_true, y_pred, peaks, a = 20):
 def count_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
 
-# ECG Dataset
 class ECGDataset(Dataset):
-    
-    # Initialisation Function
-    def __init__(self, clean_signals, noisy_signals, segment_length = 1500):
-        
-        # Intitialise the clean signals, noisy signals, signal numbers and segment length.
+    def __init__(self, clean_signals, noisy_signals, segment_length=1500):
         self.clean_signals = clean_signals
         self.noisy_signals = noisy_signals
         self.signal_numbers = list(clean_signals.keys())
         self.segment_length = segment_length
 
-    # Function to get the total number of segments in a signal.
     def __len__(self):
-        
-        # Intialise total segments as 0.
+        # Calculate the total number of segments in the entire dataset
         total_segments = 0
-        
-        # Loop through each signal.
         for signal_number in self.signal_numbers:
-            
-            # Get the length of the signal (15000)
             signal_length = self.clean_signals[signal_number].size
-            
-            # If the signal length is greater than segment length (Should always be the case.)
-            if signal_length >= self.segment_length:
-                
-                # Calculate the number of 3 second segments (Should always be 10.)
-                num_segments = signal_length // self.segment_length
-                
-                # Update the total number of segments variable.
-                total_segments += num_segments * len(self.noisy_signals)
-                
-        # Print the total number of segments in the database.
-        print(f"Total segments: {total_segments}")
-        
-        # Return the total number of segments as integer.
-        return int(total_segments)
+            segments_per_signal = signal_length // self.segment_length
+            total_segments += segments_per_signal * len(self.noisy_signals)  # Multiply by the number of SNR levels
 
-    # Function to get segment the clean and noisy signals.
+        return total_segments
+
     def __getitem__(self, idx):
-        
-        # Initialise a segment index variable.
-        segment_index = idx
-        
-        # Loop through each signal.
-        for signal_number in self.signal_numbers:
-            
-            # Get the length of the signal.
-            signal_length = self.clean_signals[signal_number].size
-            
-            # If signal is greater than segment (Should be)
-            if signal_length >= self.segment_length:
-                
-                # Get the number of segments.
-                num_segments = signal_length // self.segment_length
-                
-                # Loop through each SNR value of the noisy signals.
-                for snr in self.noisy_signals:
-                    
-                    # If the segment index is less than the number of segments (Should break at end of signal.)
-                    if segment_index < num_segments:
-                        
-                        # Set the start index of the segment.
-                        start_idx = segment_index * self.segment_length
-                        
-                        # Extract a 3 second segment from the clean signal.
-                        clean_signal_segment = self.clean_signals[signal_number][start_idx : start_idx + self.segment_length]
-                        
-                        # Extract a 3 second segment from the noisy signal.
-                        noisy_signal_segment = self.noisy_signals[snr][signal_number][0][start_idx:start_idx + self.segment_length]
-                        
-                        # Return the segments as tensors. (CHECK ALL COPIES ARE COVERED IN NOISY SIGNALS)
-                        return torch.tensor(clean_signal_segment).unsqueeze(0), torch.tensor(noisy_signal_segment).unsqueeze(0)
-                    
-                    segment_index -= num_segments
-                    
-        # Raise an out of range error when end is met.
-        raise IndexError("Index out of range")
+        # Calculate the total number of segments per signal (across all SNRs)
+        segments_per_signal = 10  # Assuming 15000 samples per signal and 1500 samples per segment
+
+        # Determine the signal index based on idx
+        signal_idx = idx // (segments_per_signal * len(self.noisy_signals))
+
+        # Ensure that signal_idx is within range
+        if signal_idx >= len(self.signal_numbers):
+            raise IndexError(f"Signal index {signal_idx} out of range for available signals")
+
+        # Determine the segment index within that signal and SNR
+        segment_in_signal_idx = idx % (segments_per_signal * len(self.noisy_signals))
+        snr_idx = segment_in_signal_idx // segments_per_signal
+        segment_idx = segment_in_signal_idx % segments_per_signal
+
+        # Get the signal number based on the signal index
+        signal_number = self.signal_numbers[signal_idx]
+        snr = list(self.noisy_signals.keys())[snr_idx]
+
+        # Calculate the start and end indices for the segment
+        start_idx = segment_idx * self.segment_length
+        end_idx = start_idx + self.segment_length
+
+        # Check if the signal number exists in the noisy signals for the current SNR
+        if signal_number in self.noisy_signals[snr]:
+            # Access the clean signal array and extract the corresponding segment
+            clean_signal_data = self.clean_signals[signal_number][0]  # Access the entire signal
+            clean_signal_segment = clean_signal_data[start_idx:end_idx]
+
+            # Prepare a list to store all noisy signal segments for this clean segment
+            noisy_signal_segments = []
+
+            # Extract the corresponding noisy signal segment for each copy
+            for noisy_signal_copy in self.noisy_signals[snr][signal_number]:
+                noisy_signal_segment = noisy_signal_copy[0][start_idx:end_idx]
+                noisy_signal_segments.append(noisy_signal_segment)
+
+            # Convert the clean segment to a tensor
+            clean_signal_tensor = torch.tensor(clean_signal_segment).unsqueeze(0)  # Shape: [1, 1500]
+
+            # Stack all noisy segments into a tensor
+            noisy_signal_tensor = torch.tensor(noisy_signal_segments)  # Shape: [num_noisy_copies, 1500]
+
+            # Add a channel dimension to both clean and noisy signals
+            clean_signal_tensor = clean_signal_tensor.unsqueeze(0)  # Shape: [1, 1, 1500]
+            noisy_signal_tensor = noisy_signal_tensor.unsqueeze(1)  # Shape: [num_noisy_copies, 1, 1500]
+
+            return clean_signal_tensor, noisy_signal_tensor
+
+        # If no corresponding noisy signal exists, return an empty tensor pair
+        return torch.tensor([]), torch.tensor([])
+
+
+
 
 # Convolutional Neural Network Model definition
 class CNN(nn.Module):
     
-    # Initialisation Funtion.
+    # Initialization Function.
     def __init__(self):
         super().__init__()
         
@@ -196,9 +186,9 @@ class CNN(nn.Module):
         self.conv1 = nn.Conv1d(1, 16, 3, padding=1)  # 1 input channel, 16 output channels (Filters), kernel size 3 (each filter looks at 3 consecutive elements, padding = 1)
         self.conv2 = nn.Conv1d(16, 8, 3, padding=1) # 16 input channels, 8 filters, kernel size 3. padding = 1
         self.conv3 = nn.Conv1d(8, 1, 3, padding=1) # 8 input channels, 1 filter, kernel size 3, padding = 1.
-        self.conv4 = nn.Conv1d(1, 1, 1500, padding=0)  # Adjust padding to avoid input size issues. Kernal now looks at final segment. (1500 samples)
+        self.conv4 = nn.Conv1d(1, 1, 1500, padding=0)  # Adjust padding to avoid input size issues. Kernel now looks at final segment. (1500 samples)
         self.acti = nn.ReLU() # Set the activation function as Rectified Linear Unit.
-        self.out = nn.Sigmoid() #  Set the outout layer as a sigmoid function.s
+        self.out = nn.Sigmoid() #  Set the output layer as a sigmoid function.
 
     # Set the forward pass.
     def forward(self, x):
@@ -206,7 +196,7 @@ class CNN(nn.Module):
         # Pass the signal through 1st layer.
         x = self.conv1(x)
         
-        # Pass signal thorugh activation function (ReLU)
+        # Pass signal through activation function (ReLU)
         x = self.acti(x)
         
         # Pass the signal through second layer.
@@ -221,10 +211,10 @@ class CNN(nn.Module):
         # Pass through activation.
         x = self.acti(x)
         
-        # Pass through 4th later.
+        # Pass through 4th layer.
         x = self.conv4(x)
         
-        # Flatten all domesions except the batch
+        # Flatten all dimensions except the batch
         x = torch.flatten(x, 1)
         
         # Pass through output layer (Sigmoid)
@@ -232,7 +222,7 @@ class CNN(nn.Module):
         
         return out
 
-# Start processing (Data Loading, Training, Evalutation)
+# Start processing (Data Loading, Training, Evaluation)
 if __name__ == '__main__':
     print("Starting script execution...")
 
@@ -249,7 +239,7 @@ if __name__ == '__main__':
         clean_signals[signal_number] = load_h5_file(file)
 
     # Load noisy signals and group by signal number
-    noisy_signals = {snr: {} for snr in ['SNR0', 'SNR6', 'SNR12', 'SNR18', 'SNR24']} 
+    noisy_signals = {snr: {} for snr in ['SNR0', 'SNR12', 'SNR18', 'SNR24']} 
 
     # Loop through each SNR level.
     for snr in noisy_signals.keys():
@@ -285,19 +275,19 @@ if __name__ == '__main__':
     dataset = ECGDataset(clean_signals, noisy_signals, segment_length)
     dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=2)
 
-    # Load in the COnvilutional Neural Network Class.
+    # Load in the Convolutional Neural Network Class.
     net = CNN().float().to(device)
     
     # Set a default loss function (MSE)
     criterion = nn.MSELoss().to(device)
     
     # Use the RMSprop optimizer.
-    optimizer = optim.RMSprop(net.parameters(), lr = 0.0002)
+    optimizer = optim.RMSprop(net.parameters(), lr=0.0002)
 
     # Training (Only train if specified.)
     if userSelectTrain:
         
-        # Lets loop through the dataset 10 times (Epoch)
+        # Let's loop through the dataset 10 times (Epoch)
         for epoch in range(10):
             # Print Epoch Number.
             print("=========== EPOCH " + str(epoch) + " ===========")
@@ -309,8 +299,11 @@ if __name__ == '__main__':
             for clean_signal, noisy_signal in dataloader:
                 
                 # Convert the clean and noisy signal to a float.
-                clean_signal = clean_signal.float().to(device)  # Shape: (batch_size, 1, segment_length)
-                noisy_signal = noisy_signal.float().to(device)  # Shape: (batch_size, 1, segment_length)
+                clean_signal = clean_signal.float().to(device)  # Shape: (batch_size, 1, 1, 1500)
+                noisy_signal = noisy_signal.float().to(device)  # Shape: (batch_size, 110, 1, 1500)
+                
+                # Flatten the batch and noisy signal copies into a single dimension for the forward pass.
+                noisy_signal = noisy_signal.view(-1, 1, 1500)  # Shape: (batch_size * 110, 1, 1500)
 
                 # Reset all weights and biases to 0.
                 optimizer.zero_grad()
@@ -318,13 +311,14 @@ if __name__ == '__main__':
                 # Pass the noisy signal through our DNN.
                 outputs = net(noisy_signal)
                 
+                # Reshape the outputs back to match the clean signal shape for loss calculation.
+                outputs = outputs.view(-1, 1, 1500)  # Shape: (batch_size, 110, 1500)
+
                 # Calculate the peak locations.
                 peaks = torch.tensor(detectors.hamilton_detector(clean_signal.cpu().numpy().flatten())).to(device)
                 
                 # Determine the loss (Using custom loss function)
-                loss = lossfcn(clean_signal, outputs, peaks, a = 20)
-                
-                ### --------------Perform Back-Propagation ------------------------ ##
+                loss = lossfcn(clean_signal, outputs, peaks, a=20)
                 
                 # Compute the gradient of the loss with respect to all the parameters.
                 loss.backward()
@@ -332,7 +326,6 @@ if __name__ == '__main__':
                 # Update the parameters of the model based on the computed gradients.
                 optimizer.step()
                 
-                ## ----------------- END Back-Propagation ------------------------ ##
                 running_loss += loss.item()
 
             print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(dataloader)}')
@@ -350,22 +343,31 @@ if __name__ == '__main__':
         net.eval()
 
     # Evaluation - Plot only 5 signals
-    with torch.no_grad():
+    with torch.no_grad():  # No updates to weights and biases. Uses trained values.
+        
+        # Initialize a counter for plots.
         plot_count = 0
+        
+        # Loop through each clean and noisy signal.
         for clean_signal, noisy_signal in dataloader:
+            
+            # Print the type and shape of data.
             print(f'clean_signal type: {type(clean_signal)}, shape: {clean_signal.shape}')
             print(f'noisy_signal type: {type(noisy_signal)}, shape: {noisy_signal.shape}')
 
+            # Convert signals to float tensors.
             clean_signal = clean_signal.float().to(device)  # Shape: (batch_size, 1, segment_length)
-            noisy_signal = noisy_signal.float().to(device)  # Shape: (batch_size, 1, segment_length)
+            noisy_signal = noisy_signal.float().to(device)  # Shape: (batch_size, len(SNRs), segment_length)
 
+            # Pass the noisy signal through the network.
             outputs = net(noisy_signal)
 
-            # Convert the tensors to numpy arrays for plotting
+            # Convert the tensors to numpy arrays for plotting.
             noisy_signal_np = noisy_signal.cpu().numpy().flatten()
             clean_signal_np = clean_signal.cpu().numpy().flatten()
             outputs_np = outputs.cpu().numpy().flatten()
 
+            # Plot the signals.
             plt.figure()
             plt.plot(noisy_signal_np, label='noisy')
             plt.plot(clean_signal_np, label='clean')
@@ -374,6 +376,8 @@ if __name__ == '__main__':
             plt.show()
 
             plot_count += 1
+            
+            # Only plot 5 signals.
             if plot_count >= 5:
                 break
 
