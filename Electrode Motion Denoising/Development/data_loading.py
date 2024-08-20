@@ -41,9 +41,12 @@ class ECGDataset(Dataset):
 
     def __getitem__(self, idx):
         segments_per_signal = 10  # Assuming 15000 samples per signal and 1500 samples per segment
+        
         signal_idx = idx // (segments_per_signal * len(self.noisy_signals))
+        
         if signal_idx >= len(self.signal_numbers):
             raise IndexError(f"Signal index {signal_idx} out of range for available signals")
+        
         segment_in_signal_idx = idx % (segments_per_signal * len(self.noisy_signals))
         snr_idx = segment_in_signal_idx // segments_per_signal
         segment_idx = segment_in_signal_idx % segments_per_signal
@@ -59,8 +62,16 @@ class ECGDataset(Dataset):
             clean_signal_segment = clean_signal_data[start_idx:end_idx]
             noisy_signal_segments = []
             for noisy_signal_copy in self.noisy_signals[snr][signal_number]:
+                if noisy_signal_copy is None:
+                    print(f"Warning: Noisy signal copy is None for file {signal_number} at SNR {snr}. Skipping.")
+                    continue  # Skip this segment if it's None
                 noisy_signal_segment = noisy_signal_copy[0][start_idx:end_idx]
                 noisy_signal_segments.append(noisy_signal_segment)
+
+            # Check if we have any valid segments after filtering
+            if len(noisy_signal_segments) == 0:
+                print(f"Warning: No valid noisy signal segments found for file {signal_number} at SNR {snr}.")
+                return torch.tensor([]), torch.tensor([])
 
             clean_signal_tensor = torch.tensor(clean_signal_segment).unsqueeze(0)
             noisy_signal_tensor = torch.tensor(noisy_signal_segments)
@@ -72,13 +83,19 @@ class ECGDataset(Dataset):
 
         return torch.tensor([]), torch.tensor([])
 
+
+
+
 def load_data(clean_signals_path, noisy_signals_path, segment_length=1500, batch_size=1, num_workers=2):
+    
     clean_signals = {}
+    
     for file in glob.glob(os.path.join(clean_signals_path, '*.h5')):
         signal_number = os.path.basename(file).split('_')[1]
         clean_signals[signal_number] = load_h5_file(file)
 
-    noisy_signals = {snr: {} for snr in ['SNR0', 'SNR12', 'SNR18', 'SNR24']}
+    noisy_signals = {snr: {} for snr in ['SNR0', 'SNR6', 'SNR12', 'SNR18', 'SNR24']}
+    
     for snr in noisy_signals.keys():
         snr_path = os.path.join(noisy_signals_path, snr)
         for file in glob.glob(os.path.join(snr_path, '*.h5')):
@@ -88,6 +105,6 @@ def load_data(clean_signals_path, noisy_signals_path, segment_length=1500, batch
             noisy_signals[snr][signal_number].append(load_h5_file(file))
 
     dataset = ECGDataset(clean_signals, noisy_signals, segment_length)
-    dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers)
+    dataloader = DataLoader(dataset, batch_size = batch_size, shuffle = True, num_workers = num_workers)
     
     return dataloader
