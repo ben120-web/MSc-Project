@@ -7,6 +7,7 @@ from models import RCNN
 import math
 import matplotlib.pyplot as plt
 import numpy as np
+from models import CDAE
 
 def main():
     # Set user selection
@@ -35,7 +36,7 @@ def main():
     dataloader = load_data(clean_signals_path, noisy_signals_path, segment_length = 1500, batch_size=1, num_workers=0)
 
     # Load the model
-    net = RCNN(input_size = 1500).float().to(device)
+    net = CDAE().float().to(device)
     
     # load Cycle GAN if needed.
     if useCycleGAN:
@@ -78,7 +79,16 @@ def main():
                 if math.isnan(R_loss):
                     R_loss = 0
                 R += R_loss
+                
+        # If y_pred is 1D after squeezing
+        if y_pred.dim() == 1:
+            y_pred = y_pred[:1500]
+        else:
+            y_pred = y_pred[:, :1500]  # Assuming it has more dimensions
+
+        # Now compute the loss
         loss = criterion(y_true, y_pred) + torch.mean(torch.tensor(R))
+        (torch.tensor(R))
         return loss
     
     def adversarial_loss_D(real, fake):
@@ -196,7 +206,7 @@ def main():
                     running_loss += loss.item()
 
             print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(dataloader)}')
-        torch.save(net.state_dict(), './model_weightsRCNN0dB.pt')
+        torch.save(net.state_dict(), './model_weightsCDAE0dB.pt')
 
     else:
         net.load_state_dict(torch.load('./model_weightsCustom.pt'))

@@ -34,62 +34,51 @@ class CNN(nn.Module):
 ########################## Convolutional Denoising Auto-Encoder ##############################
 class CDAE(nn.Module):
     
-    # Initialization Function.
     def __init__(self):
-        super().__init__()
+        super(CDAE, self).__init__()
         
         # Encoder part
         self.encoder = nn.Sequential(
-            nn.Conv1d(1, 16, 25, padding='same'),  # First Conv1D layer with 16 filters, kernel size 25
-            nn.BatchNorm1d(16),                   # Batch Normalization
-            nn.ReLU(),                            # Activation Function
-            nn.MaxPool1d(2),                      # MaxPooling with size 2
+            nn.Conv1d(1, 16, 25, stride=2, padding=12),  # Downsample by 2
+            nn.BatchNorm1d(16),                         
+            nn.ReLU(),                                  
 
-            nn.Conv1d(16, 32, 25, padding='same'), # Second Conv1D layer with 32 filters, kernel size 25
-            nn.BatchNorm1d(32),                   # Batch Normalization
-            nn.ReLU(),                            # Activation Function
-            nn.MaxPool1d(2),                      # MaxPooling with size 2
+            nn.Conv1d(16, 32, 25, stride=2, padding=12),  # Downsample by 2
+            nn.BatchNorm1d(32),                         
+            nn.ReLU(),                                  
 
-            nn.Conv1d(32, 64, 25, padding='same'), # Third Conv1D layer with 64 filters, kernel size 25
-            nn.BatchNorm1d(64),                   # Batch Normalization
-            nn.ReLU(),                            # Activation Function
-            nn.MaxPool1d(2),                      # MaxPooling with size 2
+            nn.Conv1d(32, 64, 25, stride=2, padding=12),  # Downsample by 2
+            nn.BatchNorm1d(64),                         
+            nn.ReLU(),                                  
 
-            nn.Conv1d(64, 128, 25, padding='same'), # Fourth Conv1D layer with 128 filters, kernel size 25
-            nn.BatchNorm1d(128),                  # Batch Normalization
-            nn.ReLU(),                            # Activation Function
-            nn.MaxPool1d(2),                      # MaxPooling with size 2
+            nn.Conv1d(64, 128, 25, stride=2, padding=12),  # Downsample by 2
+            nn.BatchNorm1d(128),                        
+            nn.ReLU(),                                  
 
-            nn.Conv1d(128, 1, 25, padding='same'), # Last Conv1D layer with 1 filter, kernel size 25
-            nn.BatchNorm1d(1),                    # Batch Normalization
-            nn.ReLU(),                            # Activation Function
+            nn.Conv1d(128, 256, 25, stride=2, padding=12),  # Downsample by 2
+            nn.BatchNorm1d(256),                         
+            nn.ReLU()                                   
         )
         
         # Decoder part
         self.decoder = nn.Sequential(
-            nn.Conv1d(1, 128, 25, padding='same'), # First Conv1D layer in decoder with 128 filters
-            nn.ReLU(),                            # Activation Function
-            nn.Upsample(scale_factor=2),          # Up-sampling to double the size
+            nn.ConvTranspose1d(256, 128, 25, stride=2, padding=12, output_padding=1),  # Upsample by 2
+            nn.ReLU(),                                            
 
-            nn.Conv1d(128, 64, 25, padding='same'), # Second Conv1D layer in decoder with 64 filters
-            nn.ReLU(),                            # Activation Function
-            nn.Upsample(scale_factor=2),          # Up-sampling to double the size
+            nn.ConvTranspose1d(128, 64, 25, stride=2, padding=12, output_padding=1),  # Upsample by 2
+            nn.ReLU(),                                            
 
-            nn.Conv1d(64, 32, 25, padding='same'), # Third Conv1D layer in decoder with 32 filters
-            nn.ReLU(),                            # Activation Function
-            nn.Upsample(scale_factor=2),          # Up-sampling to double the size
+            nn.ConvTranspose1d(64, 32, 25, stride=2, padding=12, output_padding=1),   # Upsample by 2
+            nn.ReLU(),                                            
 
-            nn.Conv1d(32, 16, 25, padding='same'), # Fourth Conv1D layer in decoder with 16 filters
-            nn.ReLU(),                            # Activation Function
-            nn.Upsample(scale_factor=2),          # Up-sampling to double the size
+            nn.ConvTranspose1d(32, 16, 25, stride=2, padding=12, output_padding=1),   # Upsample by 2
+            nn.ReLU(),                                            
 
-            nn.Conv1d(16, 1, 25, padding='same'),  # Final Conv1D layer with 1 filter to reconstruct the signal
-            nn.Sigmoid()                           # Sigmoid activation for output layer
+            nn.ConvTranspose1d(16, 1, 25, stride=2, padding=12, output_padding=1),    # Final ConvTranspose1d layer
+            nn.Sigmoid()                                           
         )
 
-    # Set the forward pass.
     def forward(self, x):
-        
         # Encode the input
         x = self.encoder(x)
         
@@ -97,6 +86,7 @@ class CDAE(nn.Module):
         x = self.decoder(x)
         
         return x
+
 
 ########################## Region Based Convolutional Neural Network ##################################
 class RCNN(nn.Module):
