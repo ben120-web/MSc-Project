@@ -94,7 +94,7 @@ def load_data(clean_signals_path, noisy_signals_path, segment_length=1500, batch
         signal_number = os.path.basename(file).split('_')[1]
         clean_signals[signal_number] = load_h5_file(file)
 
-    noisy_signals = {snr: {} for snr in ['SNR0']} #'SNR0', 'SNR6', 'SNR12', 'SNR18', 
+    noisy_signals = {snr: {} for snr in ['SNR12']} #'SNR0', 'SNR6', 'SNR12', 'SNR18', 
     
     for snr in noisy_signals.keys():
         snr_path = os.path.join(noisy_signals_path, snr)
