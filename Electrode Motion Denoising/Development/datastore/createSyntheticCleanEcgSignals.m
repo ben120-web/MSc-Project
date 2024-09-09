@@ -28,7 +28,7 @@ MIN_GAUSSIAN_WIDTH = [0.25 0.1 0.1 0.1 0.4];
 MAX_GAUSSIAN_WIDTH = [0.75 0.4 0.8 0.1 0.4];
 
 % Number of different sigals to generate.
-numOfCleanSignals = 2;
+numOfCleanSignals = 5;
 
 % Employ Latin Hyper Cube sampling to generate all possible combinations of
 % parameter values.
