@@ -12,8 +12,7 @@ from models import CDAE
 def main():
     # Set user selection
     userSelectTrain = True
-    useCycleGAN = False # Set to true if you want to test cycle GAN.
-
+    
     # Define the device to use
     if torch.cuda.is_available():
         device = torch.device('cuda')
@@ -37,25 +36,9 @@ def main():
 
     # Load the model
     net = CDAE().float().to(device)
-    
-    # load Cycle GAN if needed.
-    if useCycleGAN:
-        generator_A2B = Generator().float().to(device)
-        generator_B2A = Generator().float().to(device)
-        discriminator_A = Discriminator().float().to(device)
-        discriminator_B = Discriminator().float().to(device)
-        
-        # Define optimisers for CycleGAN
-        optimizer_G = optim.Adam(itertools.chain(generator_A2B.parameters(), generator_B2A.parameters(), lr = 0.0002, betas = (0.5, 0.999)))
-
-        optimizer_D_A = optim.Adam(discriminator_A.parameters(), lr=0.0002, betas=(0.5, 0.999))
-        
-        optimizer_D_B = optim.Adam(discriminator_B.parameters(), lr=0.0002, betas=(0.5, 0.999))
 
     # Set the loss function and optimizer
-    criterion = torch.nn.MSELoss().to(device)
     optimizer = optim.RMSprop(net.parameters(), lr=0.002)
-
 
     ##################### HELPER FUNCTIONS ###########################
     def lossfcn(y_true, y_pred, peaks, a=20):
@@ -91,72 +74,6 @@ def main():
         (torch.tensor(R))
         return loss
     
-    def adversarial_loss_D(real, fake):
-        """
-        Adversarial loss for the discriminator.
-        """
-        return nn.BCELoss()(real, torch.ones_like(real)) + nn.BCELoss()(fake, torch.zeros_like(fake))
-
-    def adversarial_loss_G(fake):
-        """
-        Adversarial loss for the generator.
-        """
-        return nn.BCELoss()(fake, torch.ones_like(fake)) 
-        
-    def cycle_consistency_loss(real_X, reconstructed_X, real_Y, reconstructed_Y):
-        """
-        Cycle consistency loss.
-        """
-        return nn.L1Loss()(reconstructed_X, real_X) + nn.L1Loss()(reconstructed_Y, real_Y)
-        
-    def identity_loss(real_X, same_X, real_Y, same_Y):
-        """
-        Identity loss.
-        """
-        return nn.L1Loss()(same_X, real_X) + nn.L1Loss()(same_Y, real_Y)
-
-    def distance_loss(GX_to_Y_output, real_Y, GY_to_X_output, real_X):
-        """
-        Distance loss (ldist).
-        """
-        return nn.L1Loss()(GX_to_Y_output, real_Y) + nn.L1Loss()(GY_to_X_output, real_X)
-    
-    def max_differential_loss(GX_to_Y_output, real_Y):
-        """
-        Maximum differential loss (lmax).
-        """
-        # Here, we'll use max pooling to simulate the "max differential" idea from the paper.
-        # This can be a custom operation depending on how the paper defines "max differential".
-        return torch.mean(torch.abs(torch.max(GX_to_Y_output) - torch.max(real_Y)))
-    
-    def total_loss(GX_to_Y_output, real_Y, GY_to_X_output, real_X, 
-                fake_X, fake_Y, reconstructed_X, reconstructed_Y, 
-                same_X, same_Y, DY, DX, 
-                lambda_cyc=10, lambda_id=1, lambda_dist=10, lambda_max=1):
-        """
-        Total loss function (Losstotal) as described in the paper.
-        """
-        # Adversarial losses
-        loss_adv1 = adversarial_loss_G(DY(GX_to_Y_output))
-        loss_adv2 = adversarial_loss_G(DX(GY_to_X_output))
-
-        # Cycle consistency loss
-        loss_cyc = cycle_consistency_loss(real_X, reconstructed_X, real_Y, reconstructed_Y)
-
-        # Identity loss
-        loss_id = identity_loss(real_X, same_X, real_Y, same_Y)
-
-        # Distance loss
-        loss_dist = distance_loss(GX_to_Y_output, real_Y, GY_to_X_output, real_X)
-
-        # Maximum differential loss
-        loss_max = max_differential_loss(GX_to_Y_output, real_Y)
-
-        # Total loss
-        total_loss = loss_adv1 + loss_adv2 + lambda_cyc * loss_cyc + lambda_id * loss_id + lambda_dist * loss_dist + lambda_max * loss_max
-        
-        return total_loss
-    
     def calculate_rmse(test_signal, reference_signal):
         """
         Calculate the Root Mean Square Error (RMSE) between two time series signals.
@@ -173,13 +90,95 @@ def main():
         signal2 = np.array(reference_signal)
         
         # Ensure the two signals have the same length
-        if test_signal.shape != reference_signal.shape:
+        if signal1.shape != signal2.shape:
+            
+            signal1
+            
             raise ValueError("The two signals must have the same length.")
         
         # Calculate the RMSE
-        rmse = np.sqrt(np.mean((test_signal - reference_signal) ** 2))
+        rmse = np.sqrt(np.mean((signal1 - signal2) ** 2))
         
         return rmse
+    
+    def normalized_cross_correlation(signal1, signal2):
+        """
+        Calculate the normalized cross-correlation between two time series signals.
+
+        Parameters:
+        signal1 (array-like): First time series signal.
+        signal2 (array-like): Second time series signal.
+
+        Returns:
+        ncc (array): Normalized cross-correlation of the two signals.
+        """
+        # Ensure the signals are numpy arrays
+        signal1 = np.asarray(signal1)
+        signal2 = np.asarray(signal2)
+
+        # Check if the signals have the same length
+        if signal1.shape != signal2.shape:
+            raise ValueError("The two signals must have the same length.")
+        
+        # Subtract the mean from the signals (zero-mean)
+        signal1_zero_mean = signal1 - np.mean(signal1)
+        signal2_zero_mean = signal2 - np.mean(signal2)
+
+        # Compute the cross-correlation
+        cross_corr = np.correlate(signal1_zero_mean, signal2_zero_mean, mode='full')
+
+        # Normalize the cross-correlation
+        normalization_factor = np.std(signal1) * np.std(signal2) * len(signal1)
+        ncc = cross_corr / normalization_factor
+
+        return ncc 
+    
+    def calculate_snr(signal, noise):
+        """
+        Calculate the Signal-to-Noise Ratio (SNR).
+        
+        SNR = 10 * log10(P_signal / P_noise)
+        
+        Parameters:
+        signal (array-like): The original signal.
+        noise (array-like): The noise in the signal.
+        
+        Returns:
+        float: The SNR value in dB.
+        """
+        # Calculate the power of the signal and noise
+        signal_power = np.mean(signal ** 2)
+        noise_power = np.mean(noise ** 2)
+        
+        # Calculate the SNR in decibels (dB)
+        snr = 10 * np.log10(signal_power / noise_power)
+        
+        return snr
+
+    def snr_improvement(clean_signal, noisy_signal, processed_signal):
+        """
+        Calculate the SNR improvement after signal processing.
+
+        Parameters:
+        clean_signal (array-like): The clean, reference signal.
+        noisy_signal (array-like): The noisy input signal.
+        processed_signal (array-like): The signal after processing (denoised signal).
+        
+        Returns:
+        float: The SNR improvement in dB.
+        """
+        # Calculate the noise before and after processing
+        noise_before = noisy_signal - clean_signal
+        noise_after = processed_signal - clean_signal
+        
+        # Calculate SNR before and after processing
+        snr_before = calculate_snr(clean_signal, noise_before)
+        snr_after = calculate_snr(clean_signal, noise_after)
+        
+        # Calculate SNR improvement
+        snr_improvement = snr_after - snr_before
+        
+        return snr_improvement
 
     ############################## Training ############################
     if userSelectTrain:
@@ -200,28 +199,33 @@ def main():
                     outputs = net(noisy_segment)
                     peaks = torch.tensor(detectors.hamilton_detector(clean_signal.cpu().numpy().flatten())).to(device)
                     loss = lossfcn(clean_signal.squeeze(), outputs.squeeze(), peaks, a=20)
-                    #loss = criterion
                     loss.backward()
                     optimizer.step()
                     running_loss += loss.item()
 
             print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(dataloader)}')
-        torch.save(net.state_dict(), './model_weightsCDAE12dB.pt')
+        torch.save(net.state_dict(), './model_weightsCDAE0dB.pt')
 
     else:
-        net.load_state_dict(torch.load('./model_weightsCustom.pt'))
+        net.load_state_dict(torch.load('./model_weightsRCNN24dB.pt'))
         net.eval()
 
     # Initialise.
     rmse_noisy = []
     rmse_processed = []
+    ncc_noisy = []
+    ncc_processed = []
+    snr_impove = []
     
     # Evaluation
     with torch.no_grad():
         plot_count = 0
+        
         for clean_signal, noisy_signal in dataloader:
+            
             clean_signal = clean_signal.float().to(device)
             noisy_signal = noisy_signal.float().to(device)
+            
             for i in range(noisy_signal.size(1)):
                 noisy_segment = noisy_signal[:, i, :, :]
                 outputs = net(noisy_segment)
@@ -241,10 +245,25 @@ def main():
                 # Append to list.
                 rmse_processed.append(rmse_clean_vs_processed)
                 
+                # Calculate the NCC between clean and noisy.
+                ncc_clean_noisy = normalized_cross_correlation(noisy_signal_np, clean_signal_np)
+                
+                # Append to list.
+                ncc_noisy.append(ncc_clean_noisy)
+                
+                # Calculate NCC between clean and processed.
+                ncc_clean_processed = normalized_cross_correlation(outputs_np, clean_signal_np)
+                
+                # Append to list.
+                ncc_processed.append(ncc_clean_processed)
+                
+                # Deteremine the SNR improvement
+                snr_improvement_val = snr_improvement(clean_signal_np, noisy_signal_np, outputs_np)
+                
+                # Append to list.
+                snr_impove.append(snr_improvement_val)
+                
                 # Plot examples.
-                
-                
-                
                 plt.figure()
                 plt.plot(noisy_signal_np, label='noisy')
                 plt.plot(clean_signal_np, label='clean')
@@ -265,6 +284,17 @@ def main():
     # Print results.
     print('mean RMSE for noisy signals : ' + str(mean_rmse_noisy))
     print('mean RMSE for noisy signals : ' + str(mean_rmse_processed))
+    
+    mean_ncc_noisy = np.mean(ncc_noisy)
+    mean_ncc_processed = np.mean(ncc_processed)
+    
+    # Print results.
+    print('mean NCC for noisy signals : ' + str(mean_ncc_noisy))
+    print('mean NCC for noisy signals : ' + str(mean_ncc_processed))
+    
+    mean_snr_improvement = np.mean(snr_impove)
+    
+    print('mean SNR improvement for signals : ' + str(mean_snr_improvement))
     
 if __name__ == '__main__':
     main()
