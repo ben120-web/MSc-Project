@@ -7,7 +7,7 @@ from models import RCNN
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from models import CDAE
+from models import DRNN
 
 def main():
     # Set user selection
@@ -35,7 +35,7 @@ def main():
     dataloader = load_data(clean_signals_path, noisy_signals_path, segment_length = 1500, batch_size=1, num_workers=0)
 
     # Load the model
-    net = CDAE().float().to(device)
+    net = DRNN().float().to(device)
 
     # Set the loss function and optimizer
     optimizer = optim.RMSprop(net.parameters(), lr=0.002)
@@ -182,7 +182,7 @@ def main():
 
     ############################## Training ############################
     if userSelectTrain:
-        for epoch in range(10):
+        for epoch in range(3):
             print(f"=========== EPOCH {epoch} ===========")
             running_loss = 0.0
             
@@ -204,7 +204,7 @@ def main():
                     running_loss += loss.item()
 
             print(f'Epoch [{epoch + 1}/10], Loss: {running_loss / len(dataloader)}')
-        torch.save(net.state_dict(), './model_weightsCDAE0dB.pt')
+        torch.save(net.state_dict(), './model_weightsDRNN6dB.pt')
 
     else:
         net.load_state_dict(torch.load('./model_weightsRCNN24dB.pt'))
