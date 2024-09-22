@@ -7,11 +7,13 @@ from models import RCNN
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-from models import DRNN
+from models import RCNN
+import pywt
+#from PyEMD import EMD
 
 def main():
     # Set user selection
-    userSelectTrain = True
+    userSelectTrain = False
     
     # Define the device to use
     if torch.cuda.is_available():
@@ -35,7 +37,7 @@ def main():
     dataloader = load_data(clean_signals_path, noisy_signals_path, segment_length = 1500, batch_size=1, num_workers=0)
 
     # Load the model
-    net = DRNN().float().to(device)
+    net = RCNN(input_size=1500).float().to(device)
 
     # Set the loss function and optimizer
     optimizer = optim.RMSprop(net.parameters(), lr=0.002)
@@ -73,6 +75,66 @@ def main():
         loss = criterion(y_true, y_pred) + torch.mean(torch.tensor(R))
         (torch.tensor(R))
         return loss
+    
+    def wavelet_denoising_ecg(ecg_signal, wavelet='db6', level=3, threshold_method='soft'):
+        """
+        Perform wavelet-based denoising on an ECG signal.
+
+        Parameters:
+        - ecg_signal: 1D array of the ECG signal.
+        - wavelet: Type of wavelet to use for the transform (default is 'db6').
+        - level: Decomposition level (default is 3).
+        - threshold_method: Thresholding method ('soft' or 'hard') for denoising.
+
+        Returns:
+        - denoised_ecg: The denoised ECG signal.
+        """
+        # Perform wavelet decomposition
+        coeffs = pywt.wavedec(ecg_signal, wavelet, level=level)
+
+        # Estimate the noise level (sigma)
+        sigma = np.median(np.abs(coeffs[-1])) / 0.6745
+
+        # Apply a universal threshold (based on noise level)
+        threshold = sigma * np.sqrt(2 * np.log(len(ecg_signal)))
+
+        # Apply thresholding to the detail coefficients
+        denoised_coeffs = [coeffs[0]]  # Keep the approximation coefficients unchanged
+        for i in range(1, len(coeffs)):
+            denoised_coeffs.append(pywt.threshold(coeffs[i], threshold, mode=threshold_method))
+
+        # Reconstruct the signal using the modified coefficients
+        denoised_ecg = pywt.waverec(denoised_coeffs, wavelet)
+
+        return denoised_ecg
+
+    def emd_denoising_ecg(ecg_signal, num_imfs=None):
+        """
+        Perform EMD-based denoising on an ECG signal.
+
+        Parameters:
+        - ecg_signal: 1D array of the ECG signal.
+        - num_imfs: Number of IMFs to retain for reconstruction (None means retain all).
+
+        Returns:
+        - denoised_ecg: The denoised ECG signal.
+        """
+        # Initialize EMD object
+        emd = EMD()
+
+        # Decompose the signal into IMFs
+        imfs = emd.emd(ecg_signal)
+
+        # If num_imfs is specified, only keep the specified number of IMFs
+        if num_imfs:
+            imfs = imfs[:num_imfs]
+
+        # Reconstruct the signal by summing the selected IMFs
+        denoised_ecg = np.sum(imfs, axis=0)
+
+        return denoised_ecg
+
+
     
     def calculate_rmse(test_signal, reference_signal):
         """
@@ -207,7 +269,7 @@ def main():
         torch.save(net.state_dict(), './model_weightsDRNN6dB.pt')
 
     else:
-        net.load_state_dict(torch.load('./model_weightsRCNN24dB.pt'))
+        net.load_state_dict(torch.load('./model_weightsRCNN0dB.pt'))
         net.eval()
 
     # Initialise.
@@ -232,7 +294,9 @@ def main():
                 noisy_signal_np = noisy_segment.cpu().numpy().flatten()
                 clean_signal_np = clean_signal.cpu().numpy().flatten()
                 outputs_np = outputs.cpu().numpy().flatten()
-                
+                wavelet_denoise = wavelet_denoising_ecg(noisy_signal_np, wavelet='db6', level=3, threshold_method='soft')
+                #emd_denoise = emd_denoising_ecg(noisy_signal_np, num_imfs=5)
+
                 # Calculate the RMSE between clean and noisy.
                 rmse_clean_vs_noisy = calculate_rmse(noisy_signal_np, clean_signal_np)
                 
@@ -241,6 +305,8 @@ def main():
                 
                 # Calculate the RMSE between the clean and processed.
                 rmse_clean_vs_processed = calculate_rmse(outputs_np, clean_signal_np)
+                rmse_wavelet = calculate_rmse(wavelet_denoise, clean_signal_np)
+                #rmse_emd = calculate_rmse(emd_denoise, clean_signal_np)
                 
                 # Append to list.
                 rmse_processed.append(rmse_clean_vs_processed)
@@ -253,12 +319,16 @@ def main():
                 
                 # Calculate NCC between clean and processed.
                 ncc_clean_processed = normalized_cross_correlation(outputs_np, clean_signal_np)
+                ncc_clean_processed_wavelet = normalized_cross_correlation(wavelet_denoise, clean_signal_np)
+                #ncc_clean_processed_emd = normalized_cross_correlation(emd_denoise, clean_signal_np)
                 
                 # Append to list.
                 ncc_processed.append(ncc_clean_processed)
                 
                 # Deteremine the SNR improvement
                 snr_improvement_val = snr_improvement(clean_signal_np, noisy_signal_np, outputs_np)
+                snr_improvement_val_wl = snr_improvement(clean_signal_np, noisy_signal_np, wavelet_denoise)
+                #snr_improvement_val_emd = snr_improvement(clean_signal_np, noisy_signal_np, emd_denoise)
                 
                 # Append to list.
                 snr_impove.append(snr_improvement_val)
@@ -270,6 +340,8 @@ def main():
                 plt.plot(outputs_np, label='denoised')
                 plt.legend()
                 plt.show()
+                plt.xlabel('Samples')
+                plt.ylabel('Voltage (mV)')
                 plot_count += 1
                 if plot_count >= 5:
                     break
